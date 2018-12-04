@@ -34,3 +34,10 @@ ignition.random.lambda: 0.5
 ```
 
 __________________
+
+Liens utiles:
+javadoc
+
+https://www.ida.liu.se/~TDDD10/docs/javadoc/sample/SampleFireBrigade.html
+components https://www.ida.liu.se/~TDDD10/docs/javadoc/rescuecore2/components/
+scores https://www.ida.liu.se/~TDDD10/docs/javadoc/rescuecore2/score/
