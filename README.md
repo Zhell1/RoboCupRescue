@@ -2,12 +2,13 @@
 Apprentissage Multi-Agents
 
 
+
 Notes:
 __________________
 pour lancer la simulation, dans boot/ lancer:
-
+```
  ./start.sh ../maps/gml/test/
-
+```
 (gml/test est la petite carte)
 
 dans un autre terminal lancer: (ausi dans boot/) : /sampleagent.sh 
