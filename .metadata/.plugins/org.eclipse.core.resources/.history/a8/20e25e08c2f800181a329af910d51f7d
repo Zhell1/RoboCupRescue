@@ -60,17 +60,14 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 												  (ou surface des voisins)
      * 
      * description des états:
-     * 
-     * 		DESCRIPTION OF STATE	NB VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
-     * 
-     * 		- the fire's fierceness		3 			firefiercenessCasted(Building b)	-> 1,2,3 	(no intact)
-     * 		- the building's damage 	3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
-     * 		- low_water()				2 			getLowWaterCasted() 				-> 0,1
-     * 		- requiremove				2 			getRequireMoveCasted(Building b)	-> 0,1
-     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		-> 0,1
-     * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
-     * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	-> 0,1
-     * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
+     * 		- the fire's fierceness						3 possible values => [0,8] => firefiercenessCasted(Building b) -> 1,2,3 (no intact)
+     * 		- the building's damage 					3 possible values (no intact) => [0,100] => split 33 / 66 => damageCasted(Building b) -> int 0,1,2
+     * 		- low_water()								2 possible values => getLowWaterCasted() -> 0,1
+     * 		- requiremove								2 possible values => getRequireMoveCasted(Building b) -> 0,1
+     * 		- distance au refuge						2 possible values => getDistRefugeCasted(Building b) -> 0,1
+     * 		- total area of building					3 possible values => getTotalAreaCasted(Building b) -> 0,1,2
+     * 		- get neighbours 							2 possible values => getNbNeighboursCasted(Building b) -> 0,1
+     * 		- nb agents already on it (important !)		3 possible values => getNbAgentsOnBuildingCasted(Building b) -> 0,1,2 
 
      * 		=> 3^4 * 2^4 = 1296 états
      * 
@@ -85,8 +82,8 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 		idem pour la distance au refuge
      * 
      * autres variables considérées:
-     *    	  // - the building's composition		3 possible values
-     * 		  // - the building's size				3 possible values
+     *    	  // - the building's composition 3 possible values
+     * 		  // - the building's size	3 possible values
      * 
      **/
     

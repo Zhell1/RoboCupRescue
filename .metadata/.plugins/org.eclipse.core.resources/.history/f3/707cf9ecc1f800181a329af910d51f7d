@@ -60,17 +60,16 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 												  (ou surface des voisins)
      * 
      * description des états:
-     * 
-     * 		DESCRIPTION OF STATE	NB VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
-     * 
-     * 		- the fire's fierceness		3 			firefiercenessCasted(Building b)	-> 1,2,3 	(no intact)
-     * 		- the building's damage 	3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
-     * 		- low_water()				2 			getLowWaterCasted() 				-> 0,1
-     * 		- requiremove				2 			getRequireMoveCasted(Building b)	-> 0,1
-     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		-> 0,1
-     * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
-     * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	-> 0,1
-     * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
+     * 		- the fire's fierceness						3 possible values => [0,8] => firefiercenessCasted(Building b) -> 1,2,3 (no intact)
+     * 		  // - the building's composition 				3 possible values
+     * 		  // - the building's size						3 possible values
+     * 		- the building's damage 					3 possible values (no intact) => [0,100] => split 33 / 66 => damageCasted(Building b) -> int 0,1,2
+     * 		- low_water()								2 possible values => getLowWaterCasted() -> 0,1
+     * 		- requiremove								2 possible values => getRequireMoveCasted(Building b) -> 0,1
+     * 		- distance au refuge						2 possible values => getDistRefugeCasted(Building b) -> 0,1
+     * 		- total area of building					3 possible values => getTotalAreaCasted(Building b) -> 0,1,2
+     * 		- get neighbours 							2 possible values => getNbNeighboursCasted(Building b) -> 0,1
+     * 		- nb agents already on it (important !)		3 possible values => getNbAgentsOnBuildingCasted(Building b) -> 0,1,2 
 
      * 		=> 3^4 * 2^4 = 1296 états
      * 
@@ -84,10 +83,6 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 		on peut aussi multiplier la Q valeur par la distance à l'agent avant de choisir
      * 		idem pour la distance au refuge
      * 
-     * autres variables considérées:
-     *    	  // - the building's composition		3 possible values
-     * 		  // - the building's size				3 possible values
-     * 
      **/
     
   //  static private Map<String,Integer> states = new HashMap<>(); // ex: "forcefeu" => 2
@@ -98,10 +93,10 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     // bornes (uniquement pour les éléments qu'on ne peut pas analyser depuis la map en préprocessing)
     // you can change these if you know what you are doing (original values: 33, 66, 2, 20)
-    int borne_1_damage = 33;	// split at X %
-    int borne_2_damage = 66;	// split at X % a second time
-    int borne_nbagents = 2;		// pour nbagents on building -> {0, 1 (/borne), 2} //for example if value is 2 => split between 0 and {1} / {2+} agents
-    int borne_lowwater = 20;	// split under X %
+    int borne_1_damage = 33; // split at X %
+    int borne_2_damage = 66; // split at X % a second time
+    int borne_nbagents = 2; // pour nbagents on building -> {0, 1 (/borne), 2} //for example if value is 2 => split between 0 and {1} / {2+} agents
+    int borne_lowwater = 20; // split under X %
     
     //don't change that
     private static boolean preprocessingdone = false;
@@ -125,6 +120,17 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         for (StandardEntity fighter : model.getEntitiesOfType(StandardEntityURN.FIRE_BRIGADE)) {
         	extinguishing.put((FireBrigade) fighter, nullBuilding);
         }
+        //name of states
+        /*
+        states.put("firefierceness",	null);
+        states.put("damage",			null);
+        states.put("waterlevel", 		null);
+        states.put("distagent", 		null);
+        states.put("distrefuge",		null);
+        states.put("totalarea", 		null);
+        states.put("nbneighbours",		null);
+        states.put("nbagents", 			null);
+        */
         
         if(preprocessingdone == false)
         	preprocessMap();
