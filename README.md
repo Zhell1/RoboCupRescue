@@ -1,5 +1,5 @@
 # RoboCupRescue
-Apprentissage Multi-Agents
+Apprentissage Multi-Agents par renforcement
 
 __________________
 
