@@ -2,8 +2,13 @@
 Apprentissage Multi-Agents
 
 
+Le code de l'agent FireFighter se trouve dans : 
 
-Notes:
+RobotRescue/src/sample/SampleFireBrigade.java
+
+et le dossier RobotRescue/ correspond au projet sous eclipse
+
+
 __________________
 pour lancer la simulation, dans boot/ lancer:
 ```
