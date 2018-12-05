@@ -329,6 +329,8 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     @Override
     protected void think(int time, ChangeSet changed, Collection<Command> heard) {
     	
+    	//TODO générer la reward des agents avant d'effacer le building par extinguishing(me()...)
+    	
     	extinguishing.replace(me(), nullBuilding);
     	
         if (time == config.getIntValue(kernel.KernelConstants.IGNORE_AGENT_COMMANDS_KEY)) {

@@ -1,0 +1,32 @@
+!SESSION 2018-12-05 20:03:43.536 -----------------------------------------------
+eclipse.buildId=4.4.2.M20150204-1700
+java.version=1.8.0_45
+java.vendor=Oracle Corporation
+BootLoader constants: OS=linux, ARCH=x86_64, WS=gtk, NL=fr_FR
+Framework arguments:  -product org.eclipse.epp.package.java.product
+Command-line arguments:  -data /users/nfs/Etu7/3262287/COCOMA/ROBOCUPRESCUE/ -os linux -ws gtk -arch x86_64 -product org.eclipse.epp.package.java.product
+
+!ENTRY org.eclipse.team.svn.core.svnnature 4 0 2018-12-05 20:05:56.757
+!MESSAGE Unexpected exception: 
+!STACK 0
+java.lang.NullPointerException
+	at java.util.Hashtable.put(Hashtable.java:459)
+	at org.eclipse.team.svn.core.discovery.util.WebUtil.initProxyData(WebUtil.java:158)
+	at org.eclipse.team.svn.core.discovery.util.WebUtil.downloadResource(WebUtil.java:54)
+	at org.eclipse.team.svn.core.discovery.model.RemoteBundleDiscoveryStrategy$DownloadBundleJob.exec(RemoteBundleDiscoveryStrategy.java:148)
+	at org.eclipse.team.svn.core.discovery.model.RemoteBundleDiscoveryStrategy.performDiscovery(RemoteBundleDiscoveryStrategy.java:87)
+	at org.eclipse.team.svn.core.discovery.model.ConnectorDiscovery.performDiscovery(ConnectorDiscovery.java:108)
+	at org.eclipse.team.svn.ui.discovery.wizards.ConnectorDiscoveryWizardMainPage$16.run(ConnectorDiscoveryWizardMainPage.java:1172)
+	at org.eclipse.jface.operation.ModalContext$ModalContextThread.run(ModalContext.java:122)
+!SUBENTRY 1 org.eclipse.team.svn.core.svnnature 4 0 2018-12-05 20:05:56.758
+!MESSAGE 
+!STACK 0
+java.lang.NullPointerException
+	at java.util.Hashtable.put(Hashtable.java:459)
+	at org.eclipse.team.svn.core.discovery.util.WebUtil.initProxyData(WebUtil.java:158)
+	at org.eclipse.team.svn.core.discovery.util.WebUtil.downloadResource(WebUtil.java:54)
+	at org.eclipse.team.svn.core.discovery.model.RemoteBundleDiscoveryStrategy$DownloadBundleJob.exec(RemoteBundleDiscoveryStrategy.java:148)
+	at org.eclipse.team.svn.core.discovery.model.RemoteBundleDiscoveryStrategy.performDiscovery(RemoteBundleDiscoveryStrategy.java:87)
+	at org.eclipse.team.svn.core.discovery.model.ConnectorDiscovery.performDiscovery(ConnectorDiscovery.java:108)
+	at org.eclipse.team.svn.ui.discovery.wizards.ConnectorDiscoveryWizardMainPage$16.run(ConnectorDiscoveryWizardMainPage.java:1172)
+	at org.eclipse.jface.operation.ModalContext$ModalContextThread.run(ModalContext.java:122)
