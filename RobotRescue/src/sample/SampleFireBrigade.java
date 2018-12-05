@@ -1,0 +1,520 @@
+package sample;
+
+import static rescuecore2.misc.Handy.objectsToIDs;
+
+import java.util.List;
+import java.util.Map;
+import java.lang.reflect.ParameterizedType;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Set;
+
+import rescuecore2.worldmodel.EntityID;
+import rescuecore2.worldmodel.ChangeSet;
+import rescuecore2.messages.Command;
+import rescuecore2.misc.Pair;
+import rescuecore2.log.Logger;
+import rescuecore2.standard.entities.Area;
+import rescuecore2.standard.entities.StandardEntity;
+import rescuecore2.standard.entities.StandardEntityURN;
+import rescuecore2.standard.entities.Building;
+import rescuecore2.standard.entities.Refuge;
+import rescuecore2.standard.entities.FireBrigade;
+
+/**
+   A sample fire brigade agent.
+ */
+public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
+    private static final String MAX_WATER_KEY = "fire.tank.maximum";
+    private static final String MAX_DISTANCE_KEY = "fire.extinguish.max-distance";
+    private static final String MAX_POWER_KEY = "fire.extinguish.max-sum";
+
+    private int maxWater;
+    private int maxDistance;
+    private int maxPower;
+    
+    static private Map<FireBrigade, EntityID> extinguishing = new HashMap<>(); //added
+    static private EntityID nullBuilding = new EntityID(-1); //added
+    
+    @Override
+    public String toString() {
+        return "Sample fire brigade";
+    }
+    
+    /*
+     * choix: 
+     * 
+     * Qlearning : qui sert juste à trouver le score d'un batiment = intérets d'éteindre ce batiment en feu
+     * 
+     * reward : reward global à chaque retour dans le fonction think() si il y avait un choix de batiment à l'itération
+     * 			précédente
+     * 
+     * reward local = 	en temps réels
+     * 					juste la surface des batiments, pas de survie des individus
+     * 					0 si le feu est pas éteint
+     * 				  	positif si le feu à été éteint
+     * 						=> dépend de la surface + du nb de voisins
+     * 												  (ou surface des voisins)
+     * 
+     * description des états:
+     * 		- the fire's fierceness						3 possible values => [0,8] => firefiercenessCasted(Building b) -> 1,2,3 (no intact)
+     * 		  // - the building's composition 				3 possible values
+     * 		  // - the building's size						3 possible values
+     * 		- the building's damage 					3 possible values (no intact) => [0,100] => split 33 / 66 => damageCasted(Building b) -> int 0,1,2
+     * 		- low_water()								2 possible values => getLowWaterCasted() -> 0,1
+     * 		- requiremove								2 possible values => getRequireMoveCasted(Building b) -> 0,1
+     * 		- distance au refuge						2 possible values => getDistRefugeCasted(Building b) -> 0,1
+     * 		- total area of building					3 possible values => getTotalAreaCasted(Building b) -> 0,1,2
+     * 		- get neighbours 							2 possible values => getNbNeighboursCasted(Building b) -> 0,1
+     * 		- nb agents already on it (important !)		3 possible values => getNbAgentsOnBuildingCasted(Building b) -> 0,1,2 
+
+     * 		=> 3^4 * 2^4 = 1296 états
+     * 
+     * remarques:
+     * 
+     *      requiremove (précédemment nommé 'distance à l'agent') = important pour qu'il apprenne à rejoindre les autres agents si ca vaut le coup de se déplacer
+     * 
+     * 		on  peut calculer d'abord sur la liste des batiments visibles autour,
+     * 		si il y en a pas on calcule sur la liste globale
+     * 
+     * 		on peut aussi multiplier la Q valeur par la distance à l'agent avant de choisir
+     * 		idem pour la distance au refuge
+     * 
+     **/
+    
+  //  static private Map<String,Integer> states = new HashMap<>(); // ex: "forcefeu" => 2
+    
+    static private Map<String,Float> Qtable = new HashMap<>();		// ex : "state_0_1_2_1_0_2_1_1"
+    
+    static private Map<EntityID,Integer> Hashmap_distrefuge = new HashMap<>();
+    
+    // bornes (uniquement pour les éléments qu'on ne peut pas analyser depuis la map en préprocessing)
+    // you can change these if you know what you are doing (original values: 33, 66, 2, 20)
+    int borne_1_damage = 33; // split at X %
+    int borne_2_damage = 66; // split at X % a second time
+    int borne_nbagents = 2; // pour nbagents on building -> {0, 1 (/borne), 2} //for example if value is 2 => split between 0 and {1} / {2+} agents
+    int borne_lowwater = 20; // split under X %
+    
+    //don't change that
+    private static boolean preprocessingdone = false;
+    private static int analyzedborne_nbneighbours; //preprocessing
+    private static int analyzedborne_distrefuge;
+    private static int analyzedborne_1_totalarea;
+    private static int analyzedborne_2_totalarea;
+    
+
+    //initialisation
+    @Override
+    protected void postConnect() {
+        super.postConnect();
+        model.indexClass(StandardEntityURN.BUILDING, StandardEntityURN.REFUGE,StandardEntityURN.HYDRANT,StandardEntityURN.GAS_STATION);
+        maxWater = config.getIntValue(MAX_WATER_KEY);
+        maxDistance = config.getIntValue(MAX_DISTANCE_KEY);
+        maxPower = config.getIntValue(MAX_POWER_KEY);
+        Logger.info("Sample fire brigade connected: max extinguish distance = " + maxDistance + ", max power = " + maxPower + ", max tank = " + maxWater);
+        
+        //init extinguishing, tableau des autres pompiers
+        for (StandardEntity fighter : model.getEntitiesOfType(StandardEntityURN.FIRE_BRIGADE)) {
+        	extinguishing.put((FireBrigade) fighter, nullBuilding);
+        }
+       /*
+        * 
+     *		- the fire's fierceness						3 possible values
+     * 		- the building's damage 					3 possible values (no intact)
+     * 		- get_water()								3 possible values
+     * 		- distance à l'agent						2 possible values	//bien à mettre dedans pour qu'il apprenne à rejoindre les autres agents
+     * 		- distance au refuge						2 possible values
+     * 		- total area of building					3 possible values
+     * 		- get neighbours 							2 possible values
+     * 		- nb agents already on it (important !)		3 possible values
+        */
+        //init states
+        /*
+        states.put("firefierceness",	null);
+        states.put("damage",			null);
+        states.put("waterlevel", 		null);
+        states.put("distagent", 		null);
+        states.put("distrefuge",		null);
+        states.put("totalarea", 		null);
+        states.put("nbneighbours",		null);
+        states.put("nbagents", 			null);
+        */
+        
+        if(preprocessingdone == false)
+        	preprocessMap();
+
+    }
+    void preprocessMap() {
+        // **** preprocessing of map *****
+        System.out.println("********preprocessing map *****");
+        
+        //calculate diagonal distance of the map
+		Pair<Pair<Integer, Integer>, Pair<Integer, Integer>> worldbounds = model.getWorldBounds();
+		Pair<Integer, Integer> pointA = worldbounds.first();
+		Pair<Integer, Integer> pointB = worldbounds.second();
+		int x1 = pointA.first();
+		int y1 = pointA.second();
+		int x2 = pointB.first();
+		int y2 = pointB.second();
+		int diagonaldistmap = (int) Math.sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1));
+        
+        //calculate    analyzedborne_nbneighbours
+        int nbneighbours_mean_size = 0;
+        int nbneighbours_nbval = 0;
+        int nbneighbours_valmax = 0;
+        
+        int distrefuge_mean_size = 0;
+        int distrefuge_nbval = 0;
+        int distrefuge_valmax = 0;
+        
+        int totalarea_mean = 0;
+        int totalarea_nbval = 0;
+        int totalarea_minval = -1;
+        int totalarea_maxval = 0;
+        
+        
+        for (StandardEntity building : model.getEntitiesOfType(StandardEntityURN.BUILDING)){
+        	List<EntityID> neighbourslist;
+			if(building instanceof Building){
+				
+				//nb neighbours
+        		neighbourslist = ((Building) building).getNeighbours();
+				int listsize = neighbourslist.size();
+				nbneighbours_mean_size += listsize;
+				nbneighbours_nbval++;
+				if(listsize > nbneighbours_valmax) nbneighbours_valmax = listsize;
+				
+				//distance au refuge
+				int distmin = -1;
+				EntityID closestRefuge;
+				for (EntityID refugeID : refugeIDs) {
+					int distrefuge = model.getDistance(building.getID(), refugeID);
+					if(distmin == -1){
+						distmin = distrefuge; //init
+						closestRefuge = refugeID; //init
+					}
+					if(distrefuge < distmin){
+						distmin = distrefuge;
+						closestRefuge = refugeID;
+					}
+				}
+				if(distmin != -1) { //si on a trouvé un refuge accessible
+					distrefuge_mean_size += distmin;
+					distrefuge_nbval++;
+					if(distmin > distrefuge_valmax) distrefuge_valmax = distmin; //max ok
+					Hashmap_distrefuge.put(building.getID(), distmin);
+				} else { //no refuge found
+					Hashmap_distrefuge.put(building.getID(), -1); // -1 means no refuge found 
+				}
+				
+				//total area
+				int totalarea = ((Building) building).getTotalArea();
+				totalarea_mean += totalarea;
+				totalarea_nbval++;
+				if(totalarea > totalarea_maxval) totalarea_maxval = totalarea; //max
+				if(totalarea_minval == -1) totalarea_minval = totalarea; //init min
+				if(totalarea < totalarea_minval) totalarea_minval = totalarea; //min
+			}
+        }
+        //neighbours
+        nbneighbours_mean_size = nbneighbours_mean_size / nbneighbours_nbval;
+        //definie la borne comme tu veux now
+        analyzedborne_nbneighbours = nbneighbours_mean_size;  //TODO verifier si c'est bien ou si il faut modif
+        if(analyzedborne_nbneighbours == nbneighbours_valmax && nbneighbours_valmax >= 2) analyzedborne_nbneighbours = nbneighbours_valmax -1; //sinon la borne est inutile //par sécurité mais peut-être pas utile
+        System.out.println("Mean_nbneighbours = "+nbneighbours_mean_size+"\t\tvalmax = "+nbneighbours_valmax);
+        System.out.println("chosen borne = "+analyzedborne_nbneighbours);
+        
+        //refuge dist
+        distrefuge_mean_size = distrefuge_mean_size / distrefuge_nbval;
+        //definie la borne comme tu veux now
+        analyzedborne_distrefuge = distrefuge_mean_size;  //TODO verifier si c'est bien ou si il faut modif
+        System.out.println("\nMean_distrefuge = "+distrefuge_mean_size+"\t\tvalmax = "+distrefuge_valmax);
+        System.out.println("chosen borne = "+analyzedborne_distrefuge);
+        
+        //totalarea
+        totalarea_mean = totalarea_mean / totalarea_nbval;
+        //definie la borne comme tu veux now
+        analyzedborne_1_totalarea = totalarea_minval+(totalarea_maxval-totalarea_minval)/3;
+        analyzedborne_2_totalarea = totalarea_minval+2*(totalarea_maxval-totalarea_minval)/3;
+        System.out.println("\nMean_totalarea = "+totalarea_mean+"\t\tvalmin = "+totalarea_minval+"\tvalmax = "+totalarea_maxval);
+        System.out.println("chosen bornes = "+analyzedborne_1_totalarea+", "+analyzedborne_2_totalarea);
+        
+        //TODO : ça serait BEAUCOUP mieux de faire tout ça avec des quantiles pour avoir plus d'entropie
+        // pour faire ça, stocker toutes les valeurs trouvées dans un array puis faire un sort()
+        // ensuite regarder à partir de la .length la valeur à 34% par exemple et prendre ça comme estimation du quantile "< 33%"
+        
+
+    	preprocessingdone = true;
+    }
+   
+    static private int getNbFightersOnBuilding(EntityID building) {
+    	int counter = 0;
+    	for (FireBrigade fighter : extinguishing.keySet()) {
+    		if (extinguishing.get(fighter).equals(building))
+    			counter++;
+    	}
+    	return counter;
+    }
+    
+    private int getTotalAreaCasted(Building b) {
+    	int totalarea = b.getTotalArea();
+    	
+    	if(totalarea < analyzedborne_1_totalarea) return 0;
+    		
+    	if(totalarea < analyzedborne_2_totalarea) return 1;
+    	//else
+    	return 2;
+    }
+    
+    //return 0 si proche du refuge, 1 si loin
+    // si on avait des blockades il faudrait recalculer un chemin accessible, mais comme on en a pas on peut récup la distance du preprocessing
+    private int getDistRefugeCasted(Building b) {
+		int distrefuge = Hashmap_distrefuge.get(b.getID()); // dist au refuge le plus proche
+		
+		if(distrefuge == -1){ //devrait pas arriver
+			System.out.println("getDistRefugeCasted(): ERROR REFUGE NOT FOUND (value -1)");
+			return 1;
+		}
+		
+    	if(distrefuge < analyzedborne_distrefuge) return 0;
+    	//else
+    	return 1;
+    }
+    
+    private int getNbAgentsOnBuildingCasted(Building b) {
+    	int nbagents = getNbFightersOnBuilding(b.getID());
+    	
+    	if(nbagents == 0) return 0;
+    	
+    	if(nbagents < borne_nbagents) return 1;
+    	
+    	else return 2;
+    	
+    }
+    
+    private int getNbNeighboursCasted(Building b){
+    	List<EntityID> neighbourslist = b.getNeighbours();
+    	if(neighbourslist == null) return 0;
+    	
+    	if(neighbourslist.size() == 0) return 0;
+    	
+    	if(neighbourslist.size() <= analyzedborne_nbneighbours) return 0; // < ou <= se discute, on a choisit <=
+    	//else
+    	return 1;
+    }
+    
+    private int getLowWaterCasted() {
+        FireBrigade me = me();
+        if (me.isWaterDefined()){
+        	int water = me.getWater();
+        	if(water < borne_lowwater)
+        		return 1;
+        	else
+        		return 0;
+        }
+    	return 0;
+    }
+    
+    private int getRequireMoveCasted(Building b) {
+        if (model.getDistance(getID(), b.getID()) > maxDistance)
+        	return 1;
+        else
+        	return 0;
+    }
+    
+
+    @Override
+    protected void think(int time, ChangeSet changed, Collection<Command> heard) {
+    	
+    	extinguishing.replace(me(), nullBuilding);
+    	
+        if (time == config.getIntValue(kernel.KernelConstants.IGNORE_AGENT_COMMANDS_KEY)) {
+            // Subscribe to channel 1
+            sendSubscribe(time, 1);
+        }
+        for (Command next : heard) {
+            Logger.debug("Heard " + next);
+        }
+        FireBrigade me = me();
+        // Are we currently filling with water?
+        if (me.isWaterDefined() && me.getWater() < maxWater && location() instanceof Refuge) {
+            Logger.info("Filling with water at " + location());
+            sendRest(time);
+            return;
+        }
+        // Are we out of water?
+        if (me.isWaterDefined() && me.getWater() == 0) {
+            // Head for a refuge
+            List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
+            if (path != null) {
+                Logger.info("Moving to refuge");
+                sendMove(time, path);
+                return;
+            }
+            else {
+                Logger.debug("Couldn't plan a path to a refuge.");
+                path = randomWalk();
+                Logger.info("Moving randomly");
+                sendMove(time, path);
+                return;
+            }
+        }
+        
+        /*
+         * added, ce comportement focalise tous les agents sur le batiment 249 (le plus gros de la map test)
+         *  il vont tous se mettre à  distance du batiment et l'éteindre en même temps dès qu'il prend feu
+         *  pour l'utiliser comment les 3 derniers sous-comportements correspondant de la fonction think
+         */
+        /*
+        // Find all buildings that are on fire
+        Collection<EntityID> all = getBurningBuildings();
+        // Can we extinguish any right now?
+        for (EntityID next : all) {
+        	System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
+        	
+        	
+          if (model.getDistance(getID(), next) <= maxDistance && next.getValue() == 249) { //modified
+                Logger.info("Extinguishing " + next);
+                sendExtinguish(time, next, maxPower);
+                sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
+                System.out.println("Extinguishing " + next);
+                extinguishing.replace(me, next); //added
+                return;
+            }
+        }
+        if(model.getDistance(getID(), new EntityID(249)) > maxDistance) {
+	        List<EntityID> path = search.breadthFirstSearch( me().getPosition(), new EntityID(249));
+	        sendMove(time, path);
+	        return;
+        }
+        else {
+        	List<EntityID> path = planPathToFire(new EntityID(249));
+            if (path != null) {
+                Logger.info("Moving to target");
+                sendMove(time, path);
+                return;
+            }
+        }
+	        
+        //*/
+        
+        
+        
+        
+        // Find all buildings that are on fire
+        Collection<EntityID> all = getBurningBuildings();
+        // Can we extinguish any right now?
+        for (EntityID next : all) {
+        	if(getNbFightersOnBuilding(next) > 0)
+        		System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
+        	
+     
+        	
+          if (model.getDistance(getID(), next) <= maxDistance) { //modified
+                Logger.info("Extinguishing " + next);
+                sendExtinguish(time, next, maxPower);
+                sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
+                System.out.println("Extinguishing building " + next);
+                extinguishing.replace(me, next); //added
+                return;
+            }
+        }
+        
+     
+        
+        // Plan a path to a fire
+        for (EntityID next : all) {
+            List<EntityID> path = planPathToFire(next);
+            if (path != null) {
+                Logger.info("Moving to target");
+                sendMove(time, path);
+                return;
+            }
+        }
+        
+        List<EntityID> path = null;
+        Logger.debug("Couldn't plan a path to a fire.");
+        path = randomWalk();
+        Logger.info("Moving randomly");
+        sendMove(time, path);
+        
+    }
+
+    @Override
+    protected EnumSet<StandardEntityURN> getRequestedEntityURNsEnum() {
+        return EnumSet.of(StandardEntityURN.FIRE_BRIGADE);
+    }
+    
+    private int damageCasted(Building b) {
+        if(b != null) {
+            if(b.isBrokennessDefined()) {
+            	int damage = b.getBrokenness(); //entre 0 et 100
+            	//System.out.println("damage = "+damage); 
+            	if(damage < borne_1_damage)
+            		return 0;
+            	if(damage < borne_2_damage)
+            		return 1;
+            	else
+            		return 2;
+            }
+            return 0;
+        }
+        return 0;
+    }
+    private int firefiercenessCasted(Building b) {
+        if(b != null) {
+        	if(b.isOnFire() == false){
+        		System.out.println("firefiercenessCasted(Building b) : ERROR BUILDING NOT ON FIRE");
+        		return -1;
+        	}
+        	if(b.isFierynessDefined()) {
+        		System.out.println("firefiercenessCasted(Building b) : ERROR FIERYNESS NOT DEFINED");
+        		return -1;
+        	}
+        	int fieryness = b.getFieryness(); //entre 0 et 8, seul 1,2,3 nous intéressent
+        	System.out.println("fieryness = "+fieryness); 
+        	if(fieryness ==1 || fieryness ==2 || fieryness==3)
+        		return fieryness;
+        	else
+        		System.out.println("firefiercenessCasted(Building b) : ERROR FIERYNESS NOT in {1,2,3}");
+        	
+
+        }
+        return 0;
+    }
+
+    private Collection<EntityID> getBurningBuildings() {
+        Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING);
+        List<Building> result = new ArrayList<Building>();
+        
+        for (StandardEntity next : e) {
+            if (next instanceof Building) {
+                Building b = (Building)next;
+      
+                
+                
+                if (b.isOnFire()) {
+                    //added
+                    //System.out.println("FULLDESCRIPTION : "+b.getFullDescription());
+                    
+                    result.add(b);
+                }
+            }
+        }
+        // Sort by distance
+        Collections.sort(result, new DistanceSorter(location(), model));
+        return objectsToIDs(result);
+    }
+
+    private List<EntityID> planPathToFire(EntityID target) {
+        // Try to get to anything within maxDistance of the target
+        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance);
+        if (targets.isEmpty()) {
+            return null;
+        }
+        return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+    }
+}
