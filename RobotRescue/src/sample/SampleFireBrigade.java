@@ -302,6 +302,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		
 		if(distrefuge == -1){ //devrait pas arriver
 			System.out.println("getDistRefugeCasted(): ERROR REFUGE NOT FOUND (value -1)");
+			//TODO il faut peut-être aussi ajouter les FireStation ? on peut récolter de l'eau dans les 2 sur toutes les cartes ?? a verif
 			return 1;
 		}
 		
@@ -390,16 +391,26 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	if(previousbuilding == nullBuilding) {
 
 			//is the building extinguished ?
-    		// or are we out of water?
-    		if(previousbuilding.isOnFire() == false || (me .isWaterDefined() && me.getWater() == 0)) {
+    		// or are we out of water? -> not a good idea, I comment it
+    		if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
     			//TODO REWARD
     			int newfieryness = this.getFireFiercenessCasted(previousbuilding);
     			float multiplier = 1;
-    			if(newfieryness == 1) multiplier = 2/3;
-    			if(newfieryness == 2) multiplier = 1/3;
-    			if(newfieryness == 3) multiplier = 0;
+    			if(newfieryness == 1) multiplier = 2/3; // 1/3 destroyed => 2/3 intact
+    			if(newfieryness == 2) multiplier = 1/3; //only 1/3 intact
+    			if(newfieryness == 3) multiplier = 0; //nothing intact
     			float reward = 1 * previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
-    			
+				
+			//TODO prendre en compte cela:
+			/*
+			Buildings in danger are near buildings which
+are not on fire, but that may catch fire if fire fi is not extinguished. For each building in
+danger, the utility function returns the amount of points lost if the building in danger catches
+fire.
+=> prendre en compte la surface du batiment * fieryness + somme( surface voisin*fieryness_voisin, for all voisins)
+=> ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, après préprocessing de la carte pour l'ensemble des surfaces des voisins des batiments)
+*/
+			
        			// Q learning equation:
     			// V(st) <- V(st) + alpha * (Reward_t - V(st))
     			float newval = Qtable.get(actionstate) + _alpha * (reward - Qtable.get(actionstate));
@@ -412,7 +423,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     			actionstate = null;
     			extinguishing.replace(me(), nullBuilding); 
     		}
-            else { // else building not extinguished and we still have some water, so let's keep extinguishing it !
+            else if (me .isWaterDefined() && me.getWater() > 0) { // else building not extinguished and we still have some water, so let's keep extinguishing it !
             	EntityID next = previousbuilding.getID();
             	Logger.info("Extinguishing " + next);
                 sendExtinguish(time, next, maxPower);
