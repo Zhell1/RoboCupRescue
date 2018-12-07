@@ -26,6 +26,7 @@ public final class LaunchSampleAgents {
     private static final String AMBULANCE_TEAM_FLAG = "-at";
     private static final String CIVILIAN_FLAG = "-cv";
     
+    // -fb 10 -pf 10 -at 10 -cv 10
 
     private LaunchSampleAgents() {}
 
