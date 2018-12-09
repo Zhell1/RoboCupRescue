@@ -48,13 +48,13 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
             sendSubscribe(time, 1);
         }
         for (Command next : heard) {
-            Logger.debug("Heard " + next);
+            Logger.debug("Police : Heard " + next);
         }
         // Am I near a blockade?
         Blockade target = getTargetBlockade();
         if (target != null) {
-            Logger.info("Clearing blockade " + target);
-            System.out.println("clearing blockade "+ target);
+            Logger.info("Police : Clearing blockade " + target);
+            System.out.println("Police : clearing blockade "+ target);
             sendSpeak(time, 1, ("Clearing " + target).getBytes());
 //            sendClear(time, target.getX(), target.getY());
             List<Line2D> lines = GeometryTools2D.pointsToLines(GeometryTools2D.vertexArrayToPoints(target.getApexes()), true);
@@ -77,18 +77,18 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
         // Plan a path to a blocked area
         List<EntityID> path = search.breadthFirstSearch(me().getPosition(), getBlockedRoads());
         if (path != null) {
-            Logger.info("Moving to target");
+            Logger.info("Police : Moving to target");
             Road r = (Road)model.getEntity(path.get(path.size() - 1));
             Blockade b = getTargetBlockade(r, -1);
             sendMove(time, path, b.getX(), b.getY());
-            Logger.debug("Path: " + path);
-            Logger.debug("Target coordinates: " + b.getX() + ", " + b.getY());
-        	System.out.println("Moving to target:" + b.getX() + ", " + b.getY());
+            Logger.debug("Police : Path: " + path);
+            Logger.debug("Police : Target coordinates: " + b.getX() + ", " + b.getY());
+        	System.out.println("Police : Moving to target:" + b.getX() + ", " + b.getY());
             return;
         }
-        Logger.debug("Couldn't plan a path to a blocked road");
-        Logger.info("Moving randomly");
-        System.out.println("Couldn't plan a path to a blocked road => Moving randomly");
+        Logger.debug("Police : Couldn't plan a path to a blocked road");
+        Logger.info("Police : Moving randomly");
+        System.out.println("Police : Couldn't plan a path to a blocked road => Moving randomly");
         sendMove(time, randomWalk());
     }
 
@@ -110,25 +110,25 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
     }
 
     private Blockade getTargetBlockade() {
-        Logger.debug("Looking for target blockade");
-    	System.out.println("looking for target blockade");
+        Logger.debug("Police : Looking for target blockade");
+    	System.out.println("Police : looking for target blockade");
         Area location = (Area)location();
-        Logger.debug("Looking in current location");
+        Logger.debug("Police : Looking in current location");
         Blockade result = getTargetBlockade(location, distance);
         if (result != null) {
         	System.out.println("target found in current location");
             return result;
         }
-        Logger.debug("Looking in neighbouring locations");
+        Logger.debug("Police : Looking in neighbouring locations");
         for (EntityID next : location.getNeighbours()) {
             location = (Area)model.getEntity(next);
             result = getTargetBlockade(location, distance);
             if (result != null) {
-            	System.out.println("target found in NEW neighbour location");
+            	System.out.println("Police : target found in NEW neighbour location");
                 return result;
             }
         }
-    	System.out.println("no target found");
+    	System.out.println("Police : no target found");
         return null;
     }
 

@@ -4,12 +4,15 @@ import static rescuecore2.misc.Handy.objectsToIDs;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Set;
 
 import rescuecore2.worldmodel.EntityID;
@@ -23,6 +26,7 @@ import rescuecore2.standard.entities.StandardEntityURN;
 import rescuecore2.standard.entities.Building;
 import rescuecore2.standard.entities.Refuge;
 import rescuecore2.standard.entities.FireBrigade;
+import rescuecore2.standard.entities.Road;
 
 /**
    A sample fire brigade agent.
@@ -55,8 +59,9 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private int maxDistance;
     private int maxPower;
     
-    static private Map<FireBrigade, Building> extinguishing = new HashMap<>(); //added
-    static private Building nullBuilding = new Building(new EntityID(-1)); //added
+    //firebrigade -> building
+    static private Map<EntityID, EntityID> extinguishing = new HashMap<>(); //added
+    static private EntityID nullBuilding = new EntityID(-1); //added
     
     @Override
     public String toString() {
@@ -123,12 +128,14 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private static int analyzedborne_2_totalarea;
     
     private String actionstate = null; //state description of the action being done or null if no action being done
-    private int oldfieryness = -1; // remembers the fieryness of when we started the action of extinguishing
-    
+
+
+    private long start;
 
     //initialisation
     @Override
     protected void postConnect() {
+    	
         super.postConnect();
         model.indexClass(StandardEntityURN.BUILDING, StandardEntityURN.REFUGE,StandardEntityURN.HYDRANT,StandardEntityURN.GAS_STATION);
         maxWater = config.getIntValue(MAX_WATER_KEY);
@@ -138,17 +145,20 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         
         //init extinguishing, tableau des autres pompiers
         for (StandardEntity fighter : model.getEntitiesOfType(StandardEntityURN.FIRE_BRIGADE)) {
-        	extinguishing.put((FireBrigade) fighter, nullBuilding);
+        	extinguishing.put(((FireBrigade) fighter).getID(), nullBuilding);
         }
         
         if(preprocessingdone == false)
         	preprocessMap();
+        
+        start = System.currentTimeMillis();
 
     }
     void preprocessMap() {
         // **** preprocessing of map *****
         System.out.println("********preprocessing map *****");
-        
+
+        /*
         //calculate diagonal distance of the map
 		Pair<Pair<Integer, Integer>, Pair<Integer, Integer>> worldbounds = model.getWorldBounds();
 		Pair<Integer, Integer> pointA = worldbounds.first();
@@ -158,7 +168,8 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
 		int x2 = pointB.first();
 		int y2 = pointB.second();
 		int diagonaldistmap = (int) Math.sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1));
-        
+        */
+		
         //calculate    analyzedborne_nbneighbours
         int nbneighbours_mean_size = 0;
         int nbneighbours_nbval = 0;
@@ -187,16 +198,16 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
 				
 				//distance au refuge
 				int distmin = -1;
-				EntityID closestRefuge;
+				//EntityID closestRefuge;
 				for (EntityID refugeID : refugeIDs) {
 					int distrefuge = model.getDistance(building.getID(), refugeID);
 					if(distmin == -1){
 						distmin = distrefuge; //init
-						closestRefuge = refugeID; //init
+						//closestRefuge = refugeID; //init
 					}
 					if(distrefuge < distmin){
 						distmin = distrefuge;
-						closestRefuge = refugeID;
+						//closestRefuge = refugeID;
 					}
 				}
 				if(distmin != -1) { //si on a trouvé un refuge accessible
@@ -244,7 +255,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         // pour faire ça, stocker toutes les valeurs trouvées dans un array puis faire un sort()
         // ensuite regarder à partir de la .length la valeur à 34% par exemple et prendre ça comme estimation du quantile "< 33%"
         
-
+        System.out.println("__________________________________\n");
     	preprocessingdone = true;
     }
     
@@ -262,6 +273,9 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
         * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	-> 0,1
         * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
+        * 
+        *  //autre idée: mettre le nbagents et le nbvoisins en full (pas de cast), ça change selon la map mais pas grave
+        *  // retirer low_water, damage, 
         */
     	
     	sout += "_" +getFireFiercenessCasted(b);
@@ -278,14 +292,16 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
    
     static private int getNbFightersOnBuilding(EntityID building) {
     	int counter = 0;
-    	for (FireBrigade fighter : extinguishing.keySet()) {
-    		if (extinguishing.get(fighter).equals(building)) // vérifié ok
+    	for (EntityID firebrigadeID : extinguishing.keySet()) {
+    		if (extinguishing.get(firebrigadeID).equals(building)) // vérifié ok
     			counter++;
     	}
+    
     	return counter;
     }
     
     private static int getTotalAreaCasted(Building b) {
+    	
     	int totalarea = b.getTotalArea();
     	
     	if(totalarea < analyzedborne_1_totalarea) return 0;
@@ -356,7 +372,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     Building getBuildingfromId(EntityID id) {
     	Building bout = null;
         Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING);
-        List<Building> result = new ArrayList<Building>();
+        //List<Building> result = new ArrayList<Building>();
         
         for (StandardEntity next : e) {
             if (next instanceof Building) {
@@ -369,10 +385,20 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     }
   
     float getQvalue(String state) {
+    	//if states contains a -1, then the state is no longer valid, can happen if we get a building on fire and then try to get fieryness but it is already extinguished, then fieryness = -1
+    	if (state.contains("-1")) {
+    		System.out.println("getQvalue() : state with -1, return 0 ("+state+")");
+    		return (float) 0.0;
+    	}
     	Float qvalue = Qtable.get(state);
-    	if(qvalue == null) return (float) 0.0;
+    	if(qvalue == null)
+    		return (float) 0.0;
     	else return qvalue;
     }
+    
+    static Set<EntityID> buildingsOnFire = new HashSet(); //only unique elements
+    
+    private float rewardcumul = 0;
 
     @Override
     protected void think(int time, ChangeSet changed, Collection<Command> heard) {
@@ -386,21 +412,52 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	// le +1 sert de reward minimale, par exemple si on a surface*(2-2+1)+1, on obtient au moins une reward de 1 pouravoir éteint un batiment (et donc réduit la réduction du score future)
     	//TODO verifier si quand on éteint un feu de 1 il passe à 5 (qui renvoit un par firefiercenessCasted() ) et si c'est problématique pour le calcul de la reward
     	
-    	Building previousbuilding = extinguishing.get(me());
-		FireBrigade me = me();
-    	if(previousbuilding == nullBuilding) {
 
-			//is the building extinguished ?
-    		// or are we out of water? -> not a good idea, I comment it
-    		if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
-    			//TODO REWARD
+	//	System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size()); //vérifié ok
+    	
+    	EntityID previousbuildingid = extinguishing.get(me().getID());
+    	//System.out.println("previousbuildingid = "+previousbuildingid);
+		FireBrigade me = me();
+    	if(previousbuildingid != nullBuilding) {
+    		Building previousbuilding = (Building) model.getEntity(previousbuildingid);
+    		System.out.println(previousbuildingid+" isfierynessdefined : "+previousbuilding.isFierynessDefined());
+    		System.out.println("\nnew previousbuilding = "+model.getEntity(previousbuilding.getID()).getFullDescription());
+    		System.out.println("previousbuilding = "+previousbuilding+" isOnFire() = "+previousbuilding.isOnFire()+" fieryness = "+previousbuilding.getFieryness());
+    		//is the building extinguished ?           // or are we out of water? -> not a good idea, I comment it
+    		//if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
+    		//si on voit que le building est éteint ou que quelqu'un l'a déjà éteint
+    		if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) { //vérifié ok
+    		//if( ! buildingsOnFire.contains(previousbuilding)) {
+    			buildingsOnFire.remove(previousbuilding.getID()); //vérifié ok
+    			System.out.println("I REMOVE "+previousbuilding+" FROM ONFIRE LIST");
+//    			System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size());
     			int newfieryness = this.getFireFiercenessCasted(previousbuilding);
     			float multiplier = 1;
     			if(newfieryness == 1) multiplier = 2/3; // 1/3 destroyed => 2/3 intact
     			if(newfieryness == 2) multiplier = 1/3; //only 1/3 intact
     			if(newfieryness == 3) multiplier = 0; //nothing intact
-    			float reward = 1 * previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
+    			float reward = 1 + previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
 				
+    			long elapsedtime = System.currentTimeMillis()-start;
+    			elapsedtime /= 1000; //in seconds
+    			rewardcumul += reward;
+    			reward = rewardcumul / elapsedtime;
+    			
+    			//TODO diviser la reward par le nombre d'agents qui étaient dessus ?
+    			// sinon il se mettent tous sur ceux où il y a deja des agents car ca donne une reward facile ?
+    			
+    			//TODO
+    			/*
+    			 * remarque rapport :il faut passer en reward cumulée divisée par le temps cumulé
+    			 * sinon ils apprenent juste à choisir de grosses reward (gros batiments)
+    			 * mais pas spécialement à être efficace  ?
+    			 * mais normalement non car si il fait des petits batiments pleins de fois
+    			 * ca lui rapporte autant de qvalue que de faire un gros batiment une fois non ?
+    			 * => non ! car c'est l'expected reward qu'il cherche à prédire,
+    			 * et un gros batiment aura forcément une expected reward plus grande
+    			 * or si il prédit bien on ajoute +0 et ça change pas
+    			 */
+    			
 			//TODO prendre en compte cela:
 			/*
 			Buildings in danger are near buildings which
@@ -410,35 +467,41 @@ fire.
 => prendre en compte la surface du batiment * fieryness + somme( surface voisin*fieryness_voisin, for all voisins)
 => ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, après préprocessing de la carte pour l'ensemble des surfaces des voisins des batiments)
 */
+    			if(actionstate == null) System.out.println("ERROR ACTIONSTATE IS NULL");
+    			else System.out.println("actionstate = "+actionstate);
+    			
+    			float oldqvalue = getQvalue(actionstate);
+    			System.out.println("\told qvalue = "+oldqvalue); 
 			
        			// Q learning equation:
     			// V(st) <- V(st) + alpha * (Reward_t - V(st))
-    			float newval = Qtable.get(actionstate) + _alpha * (reward - Qtable.get(actionstate));
+    			float newval = oldqvalue + _alpha * (reward - oldqvalue);
     			Qtable.put(actionstate, newval); 
 
-                System.out.println("Got reward of " + reward);
+                System.out.println("\tGot reward of " + reward);
+                System.out.println("\tnew qvalue = "+newval);
     			
     			//reset values now
-    			oldfieryness = -1;
+    		//	oldfieryness = -1;
     			actionstate = null;
-    			extinguishing.replace(me(), nullBuilding); 
+    			extinguishing.replace(me().getID(), nullBuilding); 
     		}
-            else if (me .isWaterDefined() && me.getWater() > 0) { // else building not extinguished and we still have some water, so let's keep extinguishing it !
+            else if (me.isWaterDefined() && me.getWater() > 0) { // else building not extinguished and we still have some water, so let's keep extinguishing it !
             	EntityID next = previousbuilding.getID();
             	Logger.info("Extinguishing " + next);
                 sendExtinguish(time, next, maxPower);
                 sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
-                System.out.println("Extinguishing building " + next);
-                extinguishing.replace(me, previousbuilding); //added
+                System.out.println("Keep Extinguishing building " + next);
+                extinguishing.replace(me.getID(), previousbuilding.getID()); //added
                 return;
             }
     		
     	}
     	
 		//reset values now
-		oldfieryness = -1;
+		//oldfieryness = -1;
 		actionstate = null;
-		extinguishing.replace(me(), nullBuilding); 
+		extinguishing.replace(me().getID(), nullBuilding); 
     	
     	
         if (time == config.getIntValue(kernel.KernelConstants.IGNORE_AGENT_COMMANDS_KEY)) {
@@ -524,23 +587,44 @@ fire.
         Building bestBuilding = null;
 
         //table (qvalue, état) des batiments en feu trouvés
-        Map<Float, Building> projectionTable = new HashMap<>();
+        Map<Building, Float> projectionTable = new HashMap<>();
         
-        // Can we extinguish any right now?
+        //for each building, associate a qvalue
+        String sout = "Qvalues : \n";
         for (Building next : all) {
         	String state = this.getStateFromBuilding(next);
         	float qvalue = this.getQvalue(state);
-        	projectionTable.put(qvalue, next);
+        	sout += "\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
+        	projectionTable.put(next, qvalue);
         }
+        if(all.size()>0)
+        	System.out.println(sout);
         
         //now get the best building (highest qvalue)
         if(projectionTable.size() > 0) {
-	    	List sortedKeys = new ArrayList(projectionTable.keySet());
-	    	Collections.sort(sortedKeys, Collections.reverseOrder()); //we want the highest qvalue first -> descending order
+
+	        System.out.println(all.size()+" buildings burning");
+	        
+        	List<Float> sortedvalues = new ArrayList<Float>( projectionTable.values());
+        	Collections.sort(sortedvalues, Collections.reverseOrder()); //we want the highest qvalue first -> descending order
+        	
 	    	// Do what you need with sortedKeys.
-	    	bestBuilding = projectionTable.get(sortedKeys.get(0)); //highest qvalue is first
-	    	System.out.println("found best building with qvalue "+sortedKeys.get(0));
+        	float bestqvalue = sortedvalues.get(0); //best q value
+        	//now get all the buildings corresponding to it
+        	List<Building> bestbuildings = new ArrayList<Building>();
+        	for(Building b : projectionTable.keySet()) {
+        		if(projectionTable.get(b) == bestqvalue)
+        			bestbuildings.add(b);
+        	}
+        	
+	    	bestBuilding = bestbuildings.get(0); //TODO change this by a random selection
+
+
+	    	//System.out.println("found best building "+bestBuilding.getID().getValue()+" with qvalue "+sortedKeys.get(0));
         }
+        
+        //TODO passer le tirage du bestbuilding en un tirage aléatoire projeté dans les qvalue des buildings
+        // pour ne pas toujours prendre le best mais varier un peu plus
 
         
         /*
@@ -557,19 +641,23 @@ fire.
         if (bestBuilding != null) {
 	        // si le building est déjà accessible on commence à l'éteindre
 			if (model.getDistance(getID(), bestBuilding.getID()) <= maxDistance) { //modified
+				
+				extinguishing.replace(me().getID(), bestBuilding.getID()); //added
+				actionstate = getStateFromBuilding(bestBuilding);
+				
+				
 				Logger.info("Extinguishing " + bestBuilding.getID());
 				sendExtinguish(time, bestBuilding.getID(), maxPower);
 				sendSpeak(time, 1, ("Extinguishing " + bestBuilding.getID()).getBytes());
-				System.out.println("Extinguishing building " + bestBuilding.getID());
-				extinguishing.replace(me1, bestBuilding); //added
+				System.out.println("Starts Extinguishing building " + bestBuilding.getID());
 				return;
 			}
 			else { //sinon on y va 
 			   List<EntityID> path = planPathToFire(bestBuilding.getID());
-			   if (path != null) {
+			   if (path != null && path.get(0) != me().getPosition()) {
 			       Logger.info("Moving to target");
 			       sendMove(time, path);
-			       System.out.println("Moving to target "+bestBuilding.getID());
+			       System.out.println("Moving to target "+bestBuilding.getID()+" : "+path);
 			       // if you want the agent to be free to reevaluate and change to another building, don't do anything more here
 			       //    I.E. don't announce extinguishing.replace(me1, bestBuilding) and don't force him to go the building on the next iteration (as is already)
 			       return;
@@ -578,11 +666,12 @@ fire.
 			   }
 			}
         }
-        //si aucun batiment en feu on se déplace aléatoirement
+        //si aucun batiment en feu, on se déplace aléatoirement
         List<EntityID> path = null;
         Logger.debug("Couldn't plan a path to a fire.");
         path = randomWalk();
         Logger.info("Moving randomly");
+       // System.out.println("couldn't plan path to a fire, moving randomly");
         sendMove(time, path);
         
 
@@ -668,21 +757,40 @@ fire.
 				2 or 6				2/3 of the building’s area is considered destroyed.
 				3, 7 or 8			The whole building is considered destroyed.
      */
+    // not used but can be useful to check if the values you get from b.get***() are the same
+    // as the ones from the actual fulldescription
+    // it was already the case for the fieryness so it works fine without it
+    private static int getRealValue(Building b) {
+    	System.out.println("\n-----------------------------------");
+    	String description = b.getFullDescription();
+    	System.out.println(description+"\n\t|\n\tv");
+    	String [] stab = description.split("urn:rescuecore2.standard:property:fieryness = ");
+    	for(String stabi : stab) {
+    		System.out.println(stabi);
+    	}
+    	System.out.println("fieryness found     = "+(stab[1].substring(0, 1))); //(0,1) because only 1 char for fieryness
+    	System.out.println("fieryness attribute = "+b.getFieryness());
+    	int fieryness = -1;
+
+    	System.out.println("-----------------------------------\n");
+    	return fieryness;
+    }
     private static int getFireFiercenessCasted(Building b) {
         if(b != null) {
+        	//il se peut qu'on ait réussi à éteindre le building entre temps
         	if(b.isOnFire() == false){
-        		System.out.println("firefiercenessCasted() : ERROR BUILDING NOT ON FIRE");
+        		//System.out.println("firefiercenessCasted() : ERROR BUILDING NOT ON FIRE for "+b);
+        		//return -1;
+        		System.out.println("ETEINT, fieryness = "+b.getFieryness());
         		return -1;
         	}
-        	if(b.isFierynessDefined()) {
-        		System.out.println("firefiercenessCasted() : ERROR FIERYNESS NOT DEFINED");
-        		return -1;
-        	}
+        	//remarque: b.isFierynessDefined() ne marche pas et renvoie tjr false, alors que getfieryness marche !
+
         	int fieryness = b.getFieryness(); //entre 0 et 8, seul 1,2,3 nous intéressent
-        	System.out.println("fieryness = "+fieryness); 
+        	//System.out.println("fieryness = "+fieryness+" for "+b); 
 
         	if(fieryness == 0 || fieryness == 4)
-        		System.out.println("firefiercenessCasted() : ERROR FIERYNESS SHOULD NOT BE "+fieryness);
+        		System.out.println("firefiercenessCasted() : ERROR FIERYNESS SHOULD NOT BE "+fieryness+" for "+b);
         	
         	if(fieryness == 0) return 0;
         	if(fieryness == 1 || fieryness == 5) return 1; //TODO vérifier si ça c'est une bonne idée ou pas
@@ -714,31 +822,63 @@ fire.
     }
     
     private Collection<Building> getBurningBuildings() {
-        Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING);
+        Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING); //renvoi bien tous les building, vérifié ok
         List<Building> result = new ArrayList<Building>();
-        
         for (StandardEntity next : e) {
             if (next instanceof Building) {
-                Building b = (Building)next;                
-                
-                if (b.isOnFire()) {
-                    //added
-                    //System.out.println("FULLDESCRIPTION : "+b.getFullDescription());
+                Building b = (Building)next;    
+               // getRealValue(b);
+               if (b.isOnFire()) {
                     result.add(b);
+                   // buildingsOnFire.add(b.getID());
                 }
             }
         }
+        /*
+        String sout = "";
+        for (EntityID bof : buildingsOnFire)
+        	sout += bof+", ";
+        if (sout.length() > 1)
+        	System.out.println("BUILDINGS ON FIRE = "+sout);
+        	*/
+        //System.out.println(me().getID()+"\t NB BUILDINGS ON FIRE : "+buildingsOnFire.size());
         // Sort by distance
         Collections.sort(result, new DistanceSorter(location(), model));
         return result;
+        /*List<Building> l = new ArrayList<Building>();
+        for(EntityID curr : buildingsOnFire) {
+        	l.add((Building) model.getEntity(curr));
+        }
+        Collections.sort(l, new DistanceSorter(location(), model));
+        return l;
+        */
     }
 
-    private List<EntityID> planPathToFire(EntityID target) {
+    private List<EntityID> planPathToFire_original(EntityID target) {
         // Try to get to anything within maxDistance of the target
         Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance);
         if (targets.isEmpty()) {
             return null;
         }
-        return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+        //return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+        List<EntityID> path = search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+        System.out.println("path found from "+me().getPosition()+" to "+target+" : "+path);
+        return path;
     }
+    
+    private List<EntityID> planPathToFire(EntityID target) {
+        // Try to get to anything within maxDistance of the target
+        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance);
+        targets = model.getEntitiesOfType(StandardEntityURN.ROAD);
+        if (targets.isEmpty()) {
+            return null;
+        }
+        //return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+        List<EntityID> path = search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
+        System.out.println("path found from "+me().getPosition()+" to "+target+" : "+path);
+        return path;
+    }
+    
+    
+    
 }

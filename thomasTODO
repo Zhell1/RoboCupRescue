@@ -1,0 +1,9 @@
+ajouter la communication entre les agents sur l'état des buildings en feu
+
+on peut simplifier en faisant une table static mais en faisant bien attention à ce que chaque appel a getallburningsonfire() mette à jours toutes les valeurs trouvés dans cette boucle dans la table (=> avoir tjr les valeurs les plus récentes pour tous les agents qui ne voient pas ce building)
+
+ensuite renvoyer toutes les valeurs de cette liste static au lieu de juste les buildings visibles en local
+
++ sauvegarder les qvalues dans un fichier de sauvegarde qu'on recharge au début du lancement du programme au même moment que le preprocessing
+
++ stocker les scores atteint à chaque iteration du simulateur (pour voir si on observe une convergence)
