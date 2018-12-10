@@ -403,10 +403,10 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     static Set<EntityID> buildingsOnFire = new HashSet<EntityID>(); //only unique elements
     
-    static List<Building> lastBuildingState = new ArrayList<Building>(); // don't use it directly, use the following fonctions:
+   // static List<Building> lastBuildingState = new ArrayList<Building>(); // don't use it directly, use the following fonctions:
     //update the state and makes sure there are no duplicates
     // synchronized makes sure there is not conccurent access between threads
-    synchronized static private Building lastBuildingState_UpdateBuildingOrGet(Building bupdate, int action, StandardWorldModel mymodel) {
+  /*  synchronized static private Building lastBuildingState_UpdateBuildingOrGet(Building bupdate, int action, StandardWorldModel mymodel) {
     	//action 0 -> update
     	//action 1 -> get
     	if(action == 0) {
@@ -428,6 +428,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	//action 1 => get
     	else if(action == 1) {
     		//first we search if the building can be seen from the local view
+    		
     		Building b1 = (Building) mymodel.getEntity(bupdate.getID());
     		Collection<StandardEntity> allbuildings = mymodel.getEntitiesOfType(StandardEntityURN.BUILDING);
     		if(b1 != null && b1.isFierynessDefined()) {
@@ -481,12 +482,15 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	// or maybe  a synchronized static class ???
     	return null;
     }
+    */
     
     
     private float rewardcumul = 0;
 
     @Override
     protected void think(int time, ChangeSet changed, Collection<Command> heard) {
+    	System.out.println("******* timestep "+time+" *******");
+    	model.merge(changed);
     
     	
     	//TODO générer la reward des agents avant d'effacer le building par extinguishing(me()...)
@@ -505,10 +509,13 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	//System.out.println("previousbuildingid = "+previousbuildingid);
 		FireBrigade me = me();
     	if(previousbuildingid != nullBuilding) {
+    		Building previousbuilding = (Building) model.getEntity(previousbuildingid);
+    		
+    		System.out.println("1. previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness()+", temp = "+previousbuilding.getTemperature());
     		//we get the last state of this building we got
-    		Building previousbuilding = this.lastBuildingState_UpdateBuildingOrGet((Building)(model.getEntity(previousbuildingid)), 1, model);
+    		//previousbuilding = this.lastBuildingState_UpdateBuildingOrGet((Building)(model.getEntity(previousbuildingid)), 1, model);
     		//System.out.println(previousbuildingid+" isfierynessdefined : "+previousbuilding.isFierynessDefined());
-    		System.out.println("previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness());
+    		//System.out.println("2. previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness());
     		//is the building extinguished ?           // or are we out of water? -> not a good idea, I comment it
     		//if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
     		//si on voit que le building est éteint ou que quelqu'un l'a déjà éteint
@@ -518,7 +525,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     		if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) { //vérifié ok
     		//if( ! buildingsOnFire.contains(previousbuilding)) {
     			buildingsOnFire.remove(previousbuilding.getID()); //vérifié ok
-    			this.lastBuildingState_UpdateBuildingOrGet(previousbuilding, 0, model); //remove
+    			//this.lastBuildingState_UpdateBuildingOrGet(previousbuilding, 0, model); //remove
     			System.out.println("I REMOVE "+previousbuilding+" FROM ONFIRE LIST");
 //    			System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size());
     			int newfieryness = this.getFireFiercenessCasted(previousbuilding);
@@ -577,6 +584,8 @@ fire.
     			extinguishing.replace(me().getID(), nullBuilding); 
     		}
             else if (me.isWaterDefined() && me.getWater() > 0) { // else building not extinguished and we still have some water, so let's keep extinguishing it !
+            	
+            	
             	EntityID next = previousbuilding.getID();
             	Logger.info("Extinguishing " + next);
                 sendExtinguish(time, next, maxPower);
@@ -899,17 +908,21 @@ fire.
     private Collection<Building> getBurningBuildings() {
         Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING); //renvoi bien tous les building, vérifié ok
         List<Building> result = new ArrayList<Building>();
+        String sout ="getBurningBuildings : \n";
         for (StandardEntity next : e) {
             if (next instanceof Building) {
                 Building b = (Building)next;    
                // getRealValue(b);
                if (b.isOnFire()) {// && b.isFierynessDefined()) {
                     result.add(b);
-                    this.lastBuildingState_UpdateBuildingOrGet(b, 0, model); //action 0 = update
+                    sout += "\t"+b + ", " +b.isFierynessDefined()+", "+b.getFieryness()+"\n";
+                   // this.lastBuildingState_UpdateBuildingOrGet(b, 0, model); //action 0 = update
                     buildingsOnFire.add(b.getID());
                 }
             }
         }
+        if(result.size()>0)
+        	System.out.println(sout);
         /*
         String sout = "";
         for (EntityID bof : buildingsOnFire)
@@ -924,8 +937,8 @@ fire.
         EntityID[] copy_buildingsOnFire = buildingsOnFire.toArray(new EntityID[buildingsOnFire.size()]); //for concurrentaccess
         List<Building> l = new ArrayList<Building>();
         for(EntityID curr : copy_buildingsOnFire) {
-        	 //Building b = (Building) model.getEntity(curr); //not working
-        	Building b = (Building) this.lastBuildingState_UpdateBuildingOrGet((Building)model.getEntity(curr), 1, model);
+        	 Building b = (Building) model.getEntity(curr); //not working
+        	//Building b = (Building) this.lastBuildingState_UpdateBuildingOrGet((Building)model.getEntity(curr), 1, model);
         	//if (b.getFieryness() == 1 || b.getFieryness() == 2 || b.getFieryness() == 3)
         	if(b.isOnFire())
         		l.add(b); 
