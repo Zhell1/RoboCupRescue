@@ -5,6 +5,9 @@ import static rescuecore2.misc.Handy.objectsToIDs;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
+import javax.swing.plaf.synth.SynthDesktopIconUI;
+
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -12,6 +15,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Set;
 
@@ -23,6 +27,7 @@ import rescuecore2.log.Logger;
 import rescuecore2.standard.entities.Area;
 import rescuecore2.standard.entities.StandardEntity;
 import rescuecore2.standard.entities.StandardEntityURN;
+import rescuecore2.standard.entities.StandardWorldModel;
 import rescuecore2.standard.entities.Building;
 import rescuecore2.standard.entities.Refuge;
 import rescuecore2.standard.entities.FireBrigade;
@@ -56,7 +61,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     private static final String MAX_POWER_KEY = "fire.extinguish.max-sum";
 
     private int maxWater;
-    private int maxDistance;
+    private static int maxDistance;
     private int maxPower;
     
     //firebrigade -> building
@@ -388,7 +393,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	//if states contains a -1, then the state is no longer valid, can happen if we get a building on fire and then try to get fieryness but it is already extinguished, then fieryness = -1
     	if (state.contains("-1")) {
     		System.out.println("getQvalue() : state with -1, return 0 ("+state+")");
-    		return (float) 0.0;
+    		return (float) -1.0;
     	}
     	Float qvalue = Qtable.get(state);
     	if(qvalue == null)
@@ -396,12 +401,93 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	else return qvalue;
     }
     
-    static Set<EntityID> buildingsOnFire = new HashSet(); //only unique elements
+    static Set<EntityID> buildingsOnFire = new HashSet<EntityID>(); //only unique elements
+    
+    static List<Building> lastBuildingState = new ArrayList<Building>(); // don't use it directly, use the following fonctions:
+    //update the state and makes sure there are no duplicates
+    // synchronized makes sure there is not conccurent access between threads
+    synchronized static private Building lastBuildingState_UpdateBuildingOrGet(Building bupdate, int action, StandardWorldModel mymodel) {
+    	//action 0 -> update
+    	//action 1 -> get
+    	if(action == 0) {
+	    	//on commence par supprimer l'élément précédent de même ID si il existe
+	    	//we use iterator to avoid ConcurrentModificationException
+	   		Iterator<Building> iterator = lastBuildingState.iterator();
+			while (iterator.hasNext()) {
+				// iterator.next() => l'élément courant
+	    		if(iterator.next().getID().getValue() == bupdate.getID().getValue()) {
+	    			iterator.remove(); // On supprime l'élément courant
+	    		}
+			}
+			
+	    	//on ajoute le nouveau
+			if(bupdate != null)
+				lastBuildingState.add(bupdate);
+			return null;
+    	}
+    	//action 1 => get
+    	else if(action == 1) {
+    		//first we search if the building can be seen from the local view
+    		Building b1 = (Building) mymodel.getEntity(bupdate.getID());
+    		Collection<StandardEntity> allbuildings = mymodel.getEntitiesOfType(StandardEntityURN.BUILDING);
+    		if(b1 != null && b1.isFierynessDefined()) {
+    			boolean contains = false;
+				for(StandardEntity buildingi : allbuildings) {
+    				if(buildingi.getID() == bupdate.getID() && ((Building)buildingi).isOnFire()) //TODO regarde ce que ça donne
+    					contains= true;
+    			}
+				
+    			System.out.println("building "+b1.getID()+" found in LOCAL view, fieryness : "+b1.getFieryness()+", temperature : "+b1.getTemperature()+", contains : "+contains);
+    			
+    			//if we find it then we also update it
+    			//------------ copypasted ---------------
+	    			//on commence par supprimer l'élément précédent de même ID si il existe
+	    	    	//we use iterator to avoid ConcurrentModificationException
+	    	   		Iterator<Building> iterator = lastBuildingState.iterator();
+	    			while (iterator.hasNext()) {
+	    				// iterator.next() => l'élément courant
+	    	    		if(iterator.next().getID().getValue() == b1.getID().getValue()) {
+	    	    			iterator.remove(); // On supprime l'élément courant
+	    	    		}
+	    			}
+	    	    	//on ajoute le nouveau
+	    			if(b1 != null)
+	    				lastBuildingState.add(b1);
+    			//---------------- end ------------------
+	    		if(contains == false)
+	    			buildingsOnFire.remove(b1.getID()); //vérifié ok
+	    		
+	    		return b1;
+    		}
+            
+    		//if we cannot have the building from local view, then get the last shared state 
+        	//we use iterator to avoid ConcurrentModificationException
+     		Iterator<Building> iterator = lastBuildingState.iterator();
+    		while (iterator.hasNext()) {
+    			Building b = iterator.next();
+    			if (b != null && b.getID().getValue() == bupdate.getID().getValue()) {
+    				//System.out.println("building "+bupdate.getID()+" from shared : "+b.getFullDescription());
+    				System.out.println("building "+bupdate.getID()+" from shared, new_fieryness = "+b.getFieryness()+", temperature="+b.getTemperature());
+        			return b;
+        		}
+    			
+    		}
+    		//if we found nothing we return null, should not happen
+        	return null;
+    	}
+    	//never remove building from lastBuildingState !!!!!!!!!!!!! just update them
+    	//we use only 1 function for update AND get because we need the synchronize keyword
+    	// on both functions at the same time. could be done cleaner with actual locks.	
+    	// or maybe  a synchronized static class ???
+    	return null;
+    }
+    
     
     private float rewardcumul = 0;
 
     @Override
     protected void think(int time, ChangeSet changed, Collection<Command> heard) {
+    
     	
     	//TODO générer la reward des agents avant d'effacer le building par extinguishing(me()...)
     	
@@ -419,16 +505,20 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	//System.out.println("previousbuildingid = "+previousbuildingid);
 		FireBrigade me = me();
     	if(previousbuildingid != nullBuilding) {
-    		Building previousbuilding = (Building) model.getEntity(previousbuildingid);
-    		System.out.println(previousbuildingid+" isfierynessdefined : "+previousbuilding.isFierynessDefined());
-    		System.out.println("\nnew previousbuilding = "+model.getEntity(previousbuilding.getID()).getFullDescription());
-    		System.out.println("previousbuilding = "+previousbuilding+" isOnFire() = "+previousbuilding.isOnFire()+" fieryness = "+previousbuilding.getFieryness());
+    		//we get the last state of this building we got
+    		Building previousbuilding = this.lastBuildingState_UpdateBuildingOrGet((Building)(model.getEntity(previousbuildingid)), 1, model);
+    		//System.out.println(previousbuildingid+" isfierynessdefined : "+previousbuilding.isFierynessDefined());
+    		System.out.println("previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness());
     		//is the building extinguished ?           // or are we out of water? -> not a good idea, I comment it
     		//if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
     		//si on voit que le building est éteint ou que quelqu'un l'a déjà éteint
+    		
+    		// REPRENDRE ICI, AJOUTER LASTBUILDINGSTATE
+    		
     		if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) { //vérifié ok
     		//if( ! buildingsOnFire.contains(previousbuilding)) {
     			buildingsOnFire.remove(previousbuilding.getID()); //vérifié ok
+    			this.lastBuildingState_UpdateBuildingOrGet(previousbuilding, 0, model); //remove
     			System.out.println("I REMOVE "+previousbuilding+" FROM ONFIRE LIST");
 //    			System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size());
     			int newfieryness = this.getFireFiercenessCasted(previousbuilding);
@@ -589,22 +679,21 @@ fire.
         //table (qvalue, état) des batiments en feu trouvés
         Map<Building, Float> projectionTable = new HashMap<>();
         
+        String sout ="";
+        if(all.size()>0) sout+=all.size()+" buildings burning:\n";
+        
         //for each building, associate a qvalue
-        String sout = "Qvalues : \n";
+        sout = "\tQvalues : \n";
         for (Building next : all) {
         	String state = this.getStateFromBuilding(next);
         	float qvalue = this.getQvalue(state);
-        	sout += "\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
+        	sout += "\t\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
         	projectionTable.put(next, qvalue);
         }
-        if(all.size()>0)
-        	System.out.println(sout);
+        if(all.size()>0) System.out.println(sout);
         
         //now get the best building (highest qvalue)
         if(projectionTable.size() > 0) {
-
-	        System.out.println(all.size()+" buildings burning");
-	        
         	List<Float> sortedvalues = new ArrayList<Float>( projectionTable.values());
         	Collections.sort(sortedvalues, Collections.reverseOrder()); //we want the highest qvalue first -> descending order
         	
@@ -638,9 +727,13 @@ fire.
          * CHOIX possible 2 : l'agent annonce qu'il se met sur un building au début de son choix (avant pathfinding) soit quand il commence à envoyer de l'eau
          * 						-> dans un premier temps on choisit que c'est quand il envoi de l'eau
          */
+        
+       // double dist = model.getDistance(new EntityID(960), new EntityID(274));
+        //System.out.println("dist(960, 274) = "+dist+" / "+maxDistance);
+        
         if (bestBuilding != null) {
 	        // si le building est déjà accessible on commence à l'éteindre
-			if (model.getDistance(getID(), bestBuilding.getID()) <= maxDistance) { //modified
+			if (model.getDistance(me().getPosition(), bestBuilding.getID()) <= maxDistance) { //modified
 				
 				extinguishing.replace(me().getID(), bestBuilding.getID()); //added
 				actionstate = getStateFromBuilding(bestBuilding);
@@ -662,7 +755,9 @@ fire.
 			       //    I.E. don't announce extinguishing.replace(me1, bestBuilding) and don't force him to go the building on the next iteration (as is already)
 			       return;
 			   } else {
-				   System.out.println("ERROR COULD NOT PLAN PATH TO FIRE");
+				   System.out.println("ERROR COULD NOT PLAN PATH TO FIRE:");
+				   double dist = model.getDistance(me().getPosition(), bestBuilding.getID());
+			       System.out.println("dist("+me().getPosition()+", "+bestBuilding.getID()+") = "+dist+" / "+maxDistance);
 			   }
 			}
         }
@@ -801,26 +896,6 @@ fire.
         return 0;
     }
 
-    private Collection<EntityID> getBurningBuildingsID() {
-        Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING);
-        List<Building> result = new ArrayList<Building>();
-        
-        for (StandardEntity next : e) {
-            if (next instanceof Building) {
-                Building b = (Building)next;                
-                
-                if (b.isOnFire()) {
-                    //added
-                    //System.out.println("FULLDESCRIPTION : "+b.getFullDescription());
-                    result.add(b);
-                }
-            }
-        }
-        // Sort by distance
-        Collections.sort(result, new DistanceSorter(location(), model));
-        return objectsToIDs(result);
-    }
-    
     private Collection<Building> getBurningBuildings() {
         Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING); //renvoi bien tous les building, vérifié ok
         List<Building> result = new ArrayList<Building>();
@@ -828,9 +903,10 @@ fire.
             if (next instanceof Building) {
                 Building b = (Building)next;    
                // getRealValue(b);
-               if (b.isOnFire()) {
+               if (b.isOnFire()) {// && b.isFierynessDefined()) {
                     result.add(b);
-                   // buildingsOnFire.add(b.getID());
+                    this.lastBuildingState_UpdateBuildingOrGet(b, 0, model); //action 0 = update
+                    buildingsOnFire.add(b.getID());
                 }
             }
         }
@@ -841,22 +917,34 @@ fire.
         if (sout.length() > 1)
         	System.out.println("BUILDINGS ON FIRE = "+sout);
         	*/
-        //System.out.println(me().getID()+"\t NB BUILDINGS ON FIRE : "+buildingsOnFire.size());
+        System.out.println(me().getID()+"\t NB BUILDINGS ON FIRE : "+this.buildingsOnFire.size());
         // Sort by distance
-        Collections.sort(result, new DistanceSorter(location(), model));
-        return result;
-        /*List<Building> l = new ArrayList<Building>();
-        for(EntityID curr : buildingsOnFire) {
-        	l.add((Building) model.getEntity(curr));
+      //  Collections.sort(result, new DistanceSorter(location(), model));
+       // return result;
+        EntityID[] copy_buildingsOnFire = buildingsOnFire.toArray(new EntityID[buildingsOnFire.size()]); //for concurrentaccess
+        List<Building> l = new ArrayList<Building>();
+        for(EntityID curr : copy_buildingsOnFire) {
+        	 //Building b = (Building) model.getEntity(curr); //not working
+        	Building b = (Building) this.lastBuildingState_UpdateBuildingOrGet((Building)model.getEntity(curr), 1, model);
+        	//if (b.getFieryness() == 1 || b.getFieryness() == 2 || b.getFieryness() == 3)
+        	if(b.isOnFire())
+        		l.add(b); 
+        	//test
+        	/*
+        	if(l.size() > 0) {
+        		b = l.get(l.size()-1);
+        		System.out.println("getBurningBuildings, "+b+" fieryness = "+b.getFieryness());
+        	}
+        	*/
         }
-        Collections.sort(l, new DistanceSorter(location(), model));
+       // Collections.sort(l, new DistanceSorter(location(), model)); //no need to sort with qvalues
         return l;
-        */
+        
     }
 
     private List<EntityID> planPathToFire_original(EntityID target) {
         // Try to get to anything within maxDistance of the target
-        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance);
+        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance); // should be maxdist/2
         if (targets.isEmpty()) {
             return null;
         }
@@ -866,16 +954,27 @@ fire.
         return path;
     }
     
+    //thomas: only works with buildings that are in the line of sight, will bug if asked to target to a building the agent cannot see
     private List<EntityID> planPathToFire(EntityID target) {
         // Try to get to anything within maxDistance of the target
-        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance);
-        targets = model.getEntitiesOfType(StandardEntityURN.ROAD);
+    	//get all the objets that allow access to the target
+        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance/2); //-> /2 verified, very important        
         if (targets.isEmpty()) {
+        	System.out.println("NULL PATH from "+me().getPosition()+" to "+target.getValue());
             return null;
         }
+        //getobjectsinrange doesn't work so we need to retest each target
+        List<StandardEntity> toremove = new ArrayList<StandardEntity>();
+		for(StandardEntity currtarget : targets) {
+        	double dist = model.getDistance(target, currtarget.getID());
+        	if(dist > maxDistance)
+        		toremove.add(currtarget); //stock in another to avoid concurrentmodifexception
+        }
+		for(StandardEntity currremove : toremove) //now remove all
+			targets.remove(currremove);
         //return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
         List<EntityID> path = search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
-        System.out.println("path found from "+me().getPosition()+" to "+target+" : "+path);
+        System.out.println("path found from "+me().getPosition()+" to "+target);//+" : "+path+"\t"+objectsToIDs(targets));
         return path;
     }
     
