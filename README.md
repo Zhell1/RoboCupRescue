@@ -64,8 +64,16 @@ ignition.random.lambda: 0.5
 __________________
 
 Liens utiles:
+
+bon nombre de ressources en ligne, en particulier sur la page de la compétition :
+http://rescuesim.robocup.org/resources/documentation/
+Avez-vous regardé dans la première section (agent simulation) ?
+
+
 javadoc
 
 https://www.ida.liu.se/~TDDD10/docs/javadoc/sample/SampleFireBrigade.html
+
 components https://www.ida.liu.se/~TDDD10/docs/javadoc/rescuecore2/components/
+
 scores https://www.ida.liu.se/~TDDD10/docs/javadoc/rescuecore2/score/
