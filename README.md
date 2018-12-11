@@ -66,11 +66,15 @@ __________________
 Liens utiles:
 
 bon nombre de ressources en ligne, en particulier sur la page de la compétition :
+
 http://rescuesim.robocup.org/resources/documentation/
+
 Avez-vous regardé dans la première section (agent simulation) ?
 
 
-javadoc
+
+
+- javadoc
 
 https://www.ida.liu.se/~TDDD10/docs/javadoc/sample/SampleFireBrigade.html
 
