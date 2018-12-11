@@ -2,12 +2,23 @@ package sample;
 
 import static rescuecore2.misc.Handy.objectsToIDs;
 
+import rescuecore2.Timestep;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Scanner;
 
 import javax.swing.plaf.synth.SynthDesktopIconUI;
 
+import rescuecore.Handy;
+import rescuecore.RescueConstants;
+import rescuecore.RescueObject;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,6 +29,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Set;
+import java.util.StringTokenizer;
+import java.util.concurrent.ConcurrentHashMap;
 
 import rescuecore2.worldmodel.EntityID;
 import rescuecore2.worldmodel.ChangeSet;
@@ -36,9 +49,8 @@ import rescuecore2.standard.entities.Road;
 /**
    A sample fire brigade agent.
  */
+
 public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
-	
-	
     
     //----------------------------- PARAMETERS ---------------------------------
     
@@ -47,14 +59,14 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     // bornes (uniquement pour les éléments qu'on ne peut pas analyser depuis la map en préprocessing)
     // you can change these if you know what you are doing (original values: 33, 66, 2, 20)
-    static int borne_1_damage = 33;	// split at X %
-    static int borne_2_damage = 66;	// split at X % a second time
-    static int borne_nbagents = 2;		// pour nbagents on building -> {0, 1 (/borne), 2} //for example if value is 2 => split between 0 and {1} / {2+} agents
-    static int borne_lowwater = 20;	// split under X %
+    //static int borne_1_damage = 33;	// split at X %
+    //static int borne_2_damage = 66;	// split at X % a second time
+  //  static int borne_nbagents = 2;		// pour nbagents on building -> {0, 1 (/borne), 2} //for example if value is 2 => split between 0 and {1} / {2+} agents
+    static int borne_lowwater = 50;	// split under X %
     
     //--------------------------------------------------------------------------
     
-    
+   
     
     private static final String MAX_WATER_KEY = "fire.tank.maximum";
     private static final String MAX_DISTANCE_KEY = "fire.extinguish.max-distance";
@@ -92,16 +104,20 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 
      * 		DESCRIPTION OF STATE	NB VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
      * 
-     * 		- the fire's fierceness		3 			firefiercenessCasted(Building b)	-> 1,2,3 	(no intact)
-     * 		- the building's damage 	3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
-     * 		- low_water()				2 			getLowWaterCasted() 				-> 0,1
-     * 		- requiremove				2 			getRequireMoveCasted(Building b)	-> 0,1
-     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		-> 0,1
-     * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
-     * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	-> 0,1
-     * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
-
-     * 		=> 3^4 * 2^4 = 1296 états
+     * 		- the fire's fierceness		3 			getFireFierynessCasted(Building b)	 -> 1,2,3 	(no intact)
+ 	 *		- low_water()				2 			getLowWaterCasted() 				 -> 0,1
+     * 		- requiremove				2 			getRequireMoveCasted(Building b)	 -> 0,1
+     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		 -> 0,1
+     * 		- total area of building	2 			getTotalAreaCasted(Building b) 		 -> 0,1
+ 	 *		- agentsonBuilding (!)		2 			getAgentsOnBuildingCasted(Building b)-> 0,1
+     *      - building's composition	3			b.getBuildingCode();				 -> 0,1,2
+     *   //   - NB neighbours				???			b.getNeighbours();					 -> ???		(petit et très disparate sur la Qtable, peu de valeurs)
+	 *
+     * 		=> 3*2*2*2*2*2*3*??? = 288 *??? états    (??? étant petit et très disparate sur la Qtable, peu de valeurs)
+     * 
+     * 		il faut en preprocessing:
+     * 				moyenne des distances au refuge
+     * 				médiane des total_area
      * 
      * remarques:
      * 
@@ -110,14 +126,22 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 		on  peut calculer d'abord sur la liste des batiments visibles autour,
      * 		si il y en a pas on calcule sur la liste globale
      * 
-     * 		on peut aussi multiplier la Q valeur par la distance à l'agent avant de choisir
-     * 		idem pour la distance au refuge
+     * 		on peut diviser la Qvaleur par la distance à l'agent avant de choisir
      * 
      * autres variables considérées:
-     *    	  // - the building's composition		3 possible values
      * 		  // - the building's size				3 possible values
      * 
-     **/
+     * previous used:
+     *      - the building's damage 	3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
+     * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	 -> 0,1
+     *      
+     *         
+     * 		TODO utiliser température ?
+ 	 * 
+     *  autre idée: mettre le nbagents et le nbvoisins en full (pas de cast), ça change selon la map mais pas grave
+	 *      retirer low_water, damage ?
+     *
+     */
     
   //  static private Map<String,Integer> states = new HashMap<>(); // ex: "forcefeu" => 2
     
@@ -127,16 +151,27 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     //don't change that
     private static boolean preprocessingdone = false;
-    private static int analyzedborne_nbneighbours; //preprocessing
+  //  private static int analyzedborne_nbneighbours; //preprocessing
     private static int analyzedborne_distrefuge;
-    private static int analyzedborne_1_totalarea;
-    private static int analyzedborne_2_totalarea;
+  //  private static int analyzedborne_1_totalarea;
+  //  private static int analyzedborne_2_totalarea;
+    private static int analyzedborne_totalarea;
     
     private String actionstate = null; //state description of the action being done or null if no action being done
 
+   // static Set<Building> buildingsOnFire = new HashSet<Building>(); //only unique elements
+    static Set<Building> buildingsOnFire = new ConcurrentHashSet<Building>();  
+    static Map<EntityID, Integer> lastSeenFieryness = new ConcurrentHashMap<EntityID, Integer>();
+    
+    private float rewardcumul = 0;
 
     private long start;
 
+    
+
+    //add this to start.sh before deleting old logs: 
+    //  cat logs/kernel.log | grep -a "Score" | tail -n 2 | head -n 1 | cut -d ' ' -f 5 >> score_log_thomas
+    
     //initialisation
     @Override
     protected void postConnect() {
@@ -153,15 +188,25 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         	extinguishing.put(((FireBrigade) fighter).getID(), nullBuilding);
         }
         
-        if(preprocessingdone == false)
+        if(preprocessingdone == false) {
+            //load previous Qtable
+            Qtable_loadfromfile();
+            //preprocess the map
         	preprocessMap();
+        }
+        
+        
         
         start = System.currentTimeMillis();
 
     }
+
+    
     void preprocessMap() {
         // **** preprocessing of map *****
         System.out.println("********preprocessing map *****");
+        System.out.println("__________________________________");
+        
 
         /*
         //calculate diagonal distance of the map
@@ -176,6 +221,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         */
 		
         //calculate    analyzedborne_nbneighbours
+        /*
         int nbneighbours_mean_size = 0;
         int nbneighbours_nbval = 0;
         int nbneighbours_valmax = 0;
@@ -255,10 +301,62 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         analyzedborne_2_totalarea = totalarea_minval+2*(totalarea_maxval-totalarea_minval)/3;
         System.out.println("\nMean_totalarea = "+totalarea_mean+"\t\tvalmin = "+totalarea_minval+"\tvalmax = "+totalarea_maxval);
         System.out.println("chosen bornes = "+analyzedborne_1_totalarea+", "+analyzedborne_2_totalarea);
+        */
+        
         
         //TODO : ça serait BEAUCOUP mieux de faire tout ça avec des quantiles pour avoir plus d'entropie
         // pour faire ça, stocker toutes les valeurs trouvées dans un array puis faire un sort()
-        // ensuite regarder à partir de la .length la valeur à 34% par exemple et prendre ça comme estimation du quantile "< 33%"
+        // ensuite regarder à partir de la .length la valeur à 50% par exemple et prendre ça comme estimation du quantile "< 33%"
+        
+        
+        /* il faut en preprocessing:
+         * 				moyenne des distances au refuge			analyzedborne_distrefuge 
+         * 				médiane des total_area					analyzedborne_totalarea
+         */   
+        int distrefuge_mean_size = 0;
+        int distrefuge_nbval = 0;
+        List<Integer> list_totalarea = new ArrayList<Integer>();
+        
+        for (StandardEntity buildingi : model.getEntitiesOfType(StandardEntityURN.BUILDING)){
+			if(buildingi instanceof Building){
+				Building b = (Building) buildingi;
+				
+				//distance au refuge
+				int distmin = -1;
+				//EntityID closestRefuge;
+				for (EntityID refugeID : refugeIDs) {
+					int distrefuge = model.getDistance(b.getID(), refugeID);
+					if(distmin == -1){
+						distmin = distrefuge; //init
+						//closestRefuge = refugeID; //init
+					}
+					if(distrefuge < distmin){
+						distmin = distrefuge;
+						//closestRefuge = refugeID;
+					}
+				}
+				if(distmin != -1) { //si on a trouvé un refuge accessible
+					distrefuge_mean_size += distmin;
+					distrefuge_nbval++;
+					Hashmap_distrefuge.put(b.getID(), distmin);
+				} else { //no refuge found
+					Hashmap_distrefuge.put(b.getID(), -1); // -1 means no refuge found 
+				}
+				
+				// total area
+				list_totalarea.add(b.getTotalArea());	
+			}
+        }
+        //distance au refuge -> moyenne (car moyenne maximise déjà l'entropie)
+        distrefuge_mean_size = distrefuge_mean_size / distrefuge_nbval;
+        analyzedborne_distrefuge = distrefuge_mean_size; 
+        System.out.println("analyzedborne_distrefuge =\t\t"+analyzedborne_distrefuge);
+        
+        //analyzedborne_totalarea -> prendre la médiane (maximise entropie)
+        Collections.sort(list_totalarea);
+        //System.out.println(list_totalarea);
+        analyzedborne_totalarea = list_totalarea.get((int)(list_totalarea.size()/2+1));
+        System.out.println("analyzedborne_totalarea =\t\t"+analyzedborne_totalarea);
         
         System.out.println("__________________________________\n");
     	preprocessingdone = true;
@@ -267,33 +365,19 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     //give building, get state, ex : "state_3_1_0_1_0_2_1_1"
     private String getStateFromBuilding(Building b) {
     	String sout = "state";
-        /* 
-        * 		DESCRIPTION OF STATE	NB VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
-        * 
-        * 		- the fire's fierceness		3 			firefiercenessCasted(Building b)	-> 1,2,3 	(no intact)
-        * 		- the building's damage 	3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
-        * 		- low_water()				2 			getLowWaterCasted() 				-> 0,1
-        * 		- requiremove				2 			getRequireMoveCasted(Building b)	-> 0,1
-        * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		-> 0,1
-        * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
-        * 		- get neighbours 			2 			getNbNeighboursCasted(Building b) 	-> 0,1
-        * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
-        * 
-        *  //autre idée: mettre le nbagents et le nbvoisins en full (pas de cast), ça change selon la map mais pas grave
-        *  // retirer low_water, damage, 
-        */
     	
-    	sout += "_" +getFireFiercenessCasted(b);
-    	sout += "_" +damageCasted(b) ;
-    	sout += "_" +getLowWaterCasted();
-    	sout += "_" +getRequireMoveCasted(b);
-    	sout += "_" +getDistRefugeCasted(b);
-    	sout += "_" +getTotalAreaCasted(b);
-    	sout += "_" +getNbNeighboursCasted(b);
-    	sout += "_" +getNbAgentsOnBuildingCasted(b);
-    	
+    	sout += "_"+getFireFierynessCasted(b);
+    	sout += "_"+getLowWaterCasted();
+    	sout += "_"+getRequireMoveCasted(b);
+    	sout += "_"+getDistRefugeCasted(b);				//ok
+    	sout += "_"+getTotalAreaCasted(b);
+    	sout += "_"+getAgentsOnBuildingCasted(b);
+    	sout += "_"+b.getBuildingCode();				//ok
+   // 	sout += "_"+getNbNeighbours(b);
+       
     	return sout;
     }
+
    
     static private int getNbFightersOnBuilding(EntityID building) {
     	int counter = 0;
@@ -309,56 +393,50 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	
     	int totalarea = b.getTotalArea();
     	
-    	if(totalarea < analyzedborne_1_totalarea) return 0;
-    		
-    	if(totalarea < analyzedborne_2_totalarea) return 1;
+    	if(totalarea < analyzedborne_totalarea) return 0;
     	//else
-    	return 2;
+    	return 1;
     }
     
     //return 0 si proche du refuge, 1 si loin
     // si on avait des blockades il faudrait recalculer un chemin accessible, mais comme on en a pas on peut récup la distance du preprocessing
     private static int getDistRefugeCasted(Building b) {
 		int distrefuge = Hashmap_distrefuge.get(b.getID()); // dist au refuge le plus proche
-		
 		if(distrefuge == -1){ //devrait pas arriver
 			System.out.println("getDistRefugeCasted(): ERROR REFUGE NOT FOUND (value -1)");
 			//TODO il faut peut-être aussi ajouter les FireStation ? on peut récolter de l'eau dans les 2 sur toutes les cartes ?? a verif
 			return 1;
 		}
-		
     	if(distrefuge < analyzedborne_distrefuge) return 0;
     	//else
     	return 1;
     }
     
-    private static int getNbAgentsOnBuildingCasted(Building b) {
-    	int nbagents = getNbFightersOnBuilding(b.getID());
-    	
+    private static int getAgentsOnBuildingCasted(Building b) {
+    	int nbagents = getNbFightersOnBuilding(b.getID())-1; //remove myself
     	if(nbagents == 0) return 0;
-    	
-    	if(nbagents < borne_nbagents) return 1;
-    	
-    	else return 2;
-    	
-    }
-    
-    private static int getNbNeighboursCasted(Building b){
-    	List<EntityID> neighbourslist = b.getNeighbours();
-    	if(neighbourslist == null) return 0;
-    	
-    	if(neighbourslist.size() == 0) return 0;
-    	
-    	if(neighbourslist.size() <= analyzedborne_nbneighbours) return 0; // < ou <= se discute, on a choisit <=
     	//else
     	return 1;
     }
+    //only gives an estimate since we use the model
+    private int getNbNeighbours(Building b){
+    	List<EntityID> neighbourslist = b.getNeighbours(); // attention CONTIENT AUSSI LES ROADS
+    	int nbout = 0;
+    	for(EntityID entityid : neighbourslist) {
+    		StandardEntity entity = model.getEntity(entityid);
+    		if(entity instanceof Building) {
+    			nbout++;
+    		}
+    	}
+    	return nbout;
+    }
+    
     
     private int getLowWaterCasted() {
         FireBrigade me = me();
         if (me.isWaterDefined()){
         	int water = me.getWater();
-        	if(water < borne_lowwater)
+        	if(water < maxWater*borne_lowwater/100)
         		return 1;
         	else
         		return 0;
@@ -392,7 +470,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     float getQvalue(String state) {
     	//if states contains a -1, then the state is no longer valid, can happen if we get a building on fire and then try to get fieryness but it is already extinguished, then fieryness = -1
     	if (state.contains("-1")) {
-    		System.out.println("getQvalue() : state with -1, return 0 ("+state+")");
+    		System.out.println("getQvalue() : state with -1, return -1 ("+state+")");
     		return (float) -1.0;
     	}
     	Float qvalue = Qtable.get(state);
@@ -400,148 +478,89 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     		return (float) 0.0;
     	else return qvalue;
     }
-    
-    static Set<EntityID> buildingsOnFire = new HashSet<EntityID>(); //only unique elements
-    
-   // static List<Building> lastBuildingState = new ArrayList<Building>(); // don't use it directly, use the following fonctions:
-    //update the state and makes sure there are no duplicates
-    // synchronized makes sure there is not conccurent access between threads
-  /*  synchronized static private Building lastBuildingState_UpdateBuildingOrGet(Building bupdate, int action, StandardWorldModel mymodel) {
-    	//action 0 -> update
-    	//action 1 -> get
-    	if(action == 0) {
-	    	//on commence par supprimer l'élément précédent de même ID si il existe
-	    	//we use iterator to avoid ConcurrentModificationException
-	   		Iterator<Building> iterator = lastBuildingState.iterator();
-			while (iterator.hasNext()) {
-				// iterator.next() => l'élément courant
-	    		if(iterator.next().getID().getValue() == bupdate.getID().getValue()) {
-	    			iterator.remove(); // On supprime l'élément courant
-	    		}
-			}
-			
-	    	//on ajoute le nouveau
-			if(bupdate != null)
-				lastBuildingState.add(bupdate);
-			return null;
-    	}
-    	//action 1 => get
-    	else if(action == 1) {
-    		//first we search if the building can be seen from the local view
-    		
-    		Building b1 = (Building) mymodel.getEntity(bupdate.getID());
-    		Collection<StandardEntity> allbuildings = mymodel.getEntitiesOfType(StandardEntityURN.BUILDING);
-    		if(b1 != null && b1.isFierynessDefined()) {
-    			boolean contains = false;
-				for(StandardEntity buildingi : allbuildings) {
-    				if(buildingi.getID() == bupdate.getID() && ((Building)buildingi).isOnFire()) //TODO regarde ce que ça donne
-    					contains= true;
-    			}
-				
-    			System.out.println("building "+b1.getID()+" found in LOCAL view, fieryness : "+b1.getFieryness()+", temperature : "+b1.getTemperature()+", contains : "+contains);
-    			
-    			//if we find it then we also update it
-    			//------------ copypasted ---------------
-	    			//on commence par supprimer l'élément précédent de même ID si il existe
-	    	    	//we use iterator to avoid ConcurrentModificationException
-	    	   		Iterator<Building> iterator = lastBuildingState.iterator();
-	    			while (iterator.hasNext()) {
-	    				// iterator.next() => l'élément courant
-	    	    		if(iterator.next().getID().getValue() == b1.getID().getValue()) {
-	    	    			iterator.remove(); // On supprime l'élément courant
-	    	    		}
-	    			}
-	    	    	//on ajoute le nouveau
-	    			if(b1 != null)
-	    				lastBuildingState.add(b1);
-    			//---------------- end ------------------
-	    		if(contains == false)
-	    			buildingsOnFire.remove(b1.getID()); //vérifié ok
-	    		
-	    		return b1;
-    		}
-            
-    		//if we cannot have the building from local view, then get the last shared state 
-        	//we use iterator to avoid ConcurrentModificationException
-     		Iterator<Building> iterator = lastBuildingState.iterator();
-    		while (iterator.hasNext()) {
-    			Building b = iterator.next();
-    			if (b != null && b.getID().getValue() == bupdate.getID().getValue()) {
-    				//System.out.println("building "+bupdate.getID()+" from shared : "+b.getFullDescription());
-    				System.out.println("building "+bupdate.getID()+" from shared, new_fieryness = "+b.getFieryness()+", temperature="+b.getTemperature());
-        			return b;
-        		}
-    			
-    		}
-    		//if we found nothing we return null, should not happen
-        	return null;
-    	}
-    	//never remove building from lastBuildingState !!!!!!!!!!!!! just update them
-    	//we use only 1 function for update AND get because we need the synchronize keyword
-    	// on both functions at the same time. could be done cleaner with actual locks.	
-    	// or maybe  a synchronized static class ???
-    	return null;
-    }
-    */
-    
-    
-    private float rewardcumul = 0;
 
     @Override
     protected void think(int time, ChangeSet changed, Collection<Command> heard) {
-    	System.out.println("******* timestep "+time+" *******");
-    	model.merge(changed);
-    
     	
-    	//TODO générer la reward des agents avant d'effacer le building par extinguishing(me()...)
+    	/*
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * TODO init les qvaleurs à 1 ? et faire un tirage aléatoire 
+    	 * pour faire plus d'exploration
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 * 
+    	 */
+    	//System.out.println("******* timestep "+time+" *******");
+    	//System.out.println("changed = "+changed);
+    	model.merge(changed); 
     	
-    	// dans un premier temps : reward = surface du batiment lorsqu'on arrive à l'éteindre
-    	// aussi si on a plus d'eau (car sinon on peut ne jamais avoir de reward)
-    	// on pondère la surface par le différence de fierceness entre le moment où on à commencé à éteindre et la nouvelle valeur
-    	// si on batiment est en feu il à une valeur 2 par exemple, eteint il à 1 par exemple, auquel cas on donne la reward: surface*(2-1)+1
-    	// le +1 sert de reward minimale, par exemple si on a surface*(2-2+1)+1, on obtient au moins une reward de 1 pouravoir éteint un batiment (et donc réduit la réduction du score future)
-    	//TODO verifier si quand on éteint un feu de 1 il passe à 5 (qui renvoit un par firefiercenessCasted() ) et si c'est problématique pour le calcul de la reward
+    	FireBrigade me = me();
+    	EntityID previousbuildingid  = extinguishing.get(me().getID());
+    	int nbagentsonbuilding = 0;
     	
-
-	//	System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size()); //vérifié ok
-    	
-    	EntityID previousbuildingid = extinguishing.get(me().getID());
-    	//System.out.println("previousbuildingid = "+previousbuildingid);
-		FireBrigade me = me();
+    	//si on était en train d'éteindre un building
     	if(previousbuildingid != nullBuilding) {
-    		Building previousbuilding = (Building) model.getEntity(previousbuildingid);
-    		
-    		System.out.println("1. previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness()+", temp = "+previousbuilding.getTemperature());
-    		//we get the last state of this building we got
-    		//previousbuilding = this.lastBuildingState_UpdateBuildingOrGet((Building)(model.getEntity(previousbuildingid)), 1, model);
-    		//System.out.println(previousbuildingid+" isfierynessdefined : "+previousbuilding.isFierynessDefined());
-    		//System.out.println("2. previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire()+", fieryness = "+previousbuilding.getFieryness());
-    		//is the building extinguished ?           // or are we out of water? -> not a good idea, I comment it
-    		//if(previousbuilding.isOnFire() == false ){ //|| (me .isWaterDefined() && me.getWater() == 0)) {
-    		//si on voit que le building est éteint ou que quelqu'un l'a déjà éteint
-    		
-    		// REPRENDRE ICI, AJOUTER LASTBUILDINGSTATE
-    		
-    		if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) { //vérifié ok
-    		//if( ! buildingsOnFire.contains(previousbuilding)) {
-    			buildingsOnFire.remove(previousbuilding.getID()); //vérifié ok
-    			//this.lastBuildingState_UpdateBuildingOrGet(previousbuilding, 0, model); //remove
-    			System.out.println("I REMOVE "+previousbuilding+" FROM ONFIRE LIST");
-//    			System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size());
-    			int newfieryness = this.getFireFiercenessCasted(previousbuilding);
+    		nbagentsonbuilding=getNbFightersOnBuilding(previousbuildingid); //not perfect, will change for each agent but better than nothing (ex 3,2,1 as each agents removes himself), should still help converge
+    		System.out.println("previousbuilding = "+previousbuildingid);
+	    	//si on observe encore le building qu'on éteignait, on le met à jour
+	    	if(changed.getChangedEntities().contains(previousbuildingid)) {
+	        	Building previousbuilding = (Building) model.getEntity(previousbuildingid);
+	    		//we need to remove because add to a set doesn't change it if it already exists
+		    	this.buildingsOnFire.remove(previousbuilding);
+		    	if(previousbuilding.isOnFire()){
+		    		this.buildingsOnFire.add(previousbuilding); //update shared data with new value
+		    		System.out.println("updated previous building "+previousbuildingid+" from changeset");
+		    	}
+	    	}
+        	Building previousbuilding = (Building) model.getEntity(previousbuildingid);
+	    	String sout = "previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire();
+	    	if(previousbuilding.isFierynessDefined()) sout+= ", fieryness = "+previousbuilding.getFieryness();
+	    	System.out.println(sout);
+	    	//si le building est éteint où qu'un autre agent à indiqué qu'il était éteint en le retirant:
+	    	if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) {
+	    		this.buildingsOnFire.remove(previousbuilding);
+    			System.out.println("removed "+previousbuildingid+" from onfire list");
+    	        System.out.println("Nb buildings on fire : "+this.buildingsOnFire.size());
+    			
+    			//now we do the Qlearning
+    	        int newfieryness = this.getFireFierynessCasted(previousbuilding);
+    	        
     			float multiplier = 1;
     			if(newfieryness == 1) multiplier = 2/3; // 1/3 destroyed => 2/3 intact
     			if(newfieryness == 2) multiplier = 1/3; //only 1/3 intact
     			if(newfieryness == 3) multiplier = 0; //nothing intact
     			float reward = 1 + previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
-				
-    			long elapsedtime = System.currentTimeMillis()-start;
+				reward = reward / nbagentsonbuilding ;
+    			
+    			//TODO URGENT, ne plus faire reward cumulée mais juste diviser par le temps passé à éteindre ce building
+    			// c'est à dire entre le moment où on le choisit comme bestbuilding et maintenant (juste utiliser une variable previoustime?)
+    			/*long elapsedtime = System.currentTimeMillis()-start;
     			elapsedtime /= 1000; //in seconds
     			rewardcumul += reward;
     			reward = rewardcumul / elapsedtime;
-    			
+    			*/
     			//TODO diviser la reward par le nombre d'agents qui étaient dessus ?
-    			// sinon il se mettent tous sur ceux où il y a deja des agents car ca donne une reward facile ?
+    			// sinon il se mettent tous sur ceux où il y a deja des agents car ca donne une reward facile !?
     			
     			//TODO
     			/*
@@ -555,15 +574,16 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     			 * or si il prédit bien on ajoute +0 et ça change pas
     			 */
     			
-			//TODO prendre en compte cela:
-			/*
-			Buildings in danger are near buildings which
-are not on fire, but that may catch fire if fire fi is not extinguished. For each building in
-danger, the utility function returns the amount of points lost if the building in danger catches
-fire.
-=> prendre en compte la surface du batiment * fieryness + somme( surface voisin*fieryness_voisin, for all voisins)
-=> ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, après préprocessing de la carte pour l'ensemble des surfaces des voisins des batiments)
-*/
+				//TODO prendre en compte cela:
+				/*
+				Buildings in danger are near buildings which
+				are not on fire, but that may catch fire if fire fi is not extinguished. For each building in
+				danger, the utility function returns the amount of points lost if the building in danger catches
+				fire.
+				=> prendre en compte la surface du batiment * fieryness + somme( surface voisin*fieryness_voisin, for all voisins)
+				=> ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, après préprocessing de la carte pour l'ensemble des surfaces des voisins des batiments)
+				*/
+    			
     			if(actionstate == null) System.out.println("ERROR ACTIONSTATE IS NULL");
     			else System.out.println("actionstate = "+actionstate);
     			
@@ -579,23 +599,27 @@ fire.
                 System.out.println("\tnew qvalue = "+newval);
     			
     			//reset values now
-    		//	oldfieryness = -1;
     			actionstate = null;
     			extinguishing.replace(me().getID(), nullBuilding); 
-    		}
-            else if (me.isWaterDefined() && me.getWater() > 0) { // else building not extinguished and we still have some water, so let's keep extinguishing it !
-            	
-            	
-            	EntityID next = previousbuilding.getID();
+    			
+    			//now we save the Qtable to a file
+    			Qtable_savetofile();
+    			
+	    	}
+			//System.out.println(me().getID()+"\tNB BUILDINGS ON FIRE = "+buildingsOnFire.size());
+
+	    	// else if building not extinguished and we still have some water, so let's keep extinguishing it !
+	    	else if (me.isWaterDefined() && me.getWater() > 0) { 
+            	EntityID next = previousbuildingid;
             	Logger.info("Extinguishing " + next);
                 sendExtinguish(time, next, maxPower);
                 sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
                 System.out.println("Keep Extinguishing building " + next);
-                extinguishing.replace(me.getID(), previousbuilding.getID()); //added
+                extinguishing.replace(me.getID(), previousbuildingid); //added
                 return;
-            }
+    		}
+         }
     		
-    	}
     	
 		//reset values now
 		//oldfieryness = -1;
@@ -635,53 +659,33 @@ fire.
             }
         }
         
-        /*
-         * added, ce comportement focalise tous les agents sur le batiment 249 (le plus gros de la map test)
-         *  il vont tous se mettre à  distance du batiment et l'éteindre en même temps dès qu'il prend feu
-         *  pour l'utiliser comment les 3 derniers sous-comportements correspondant de la fonction think
-         */
-        /*
-        // Find all buildings that are on fire
-        Collection<EntityID> all = getBurningBuildings();
-        // Can we extinguish any right now?
-        for (EntityID next : all) {
-        	System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
-        	
-        	
-          if (model.getDistance(getID(), next) <= maxDistance && next.getValue() == 249) { //modified
-                Logger.info("Extinguishing " + next);
-                sendExtinguish(time, next, maxPower);
-                sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
-                System.out.println("Extinguishing " + next);
-                extinguishing.replace(me, next); //added
-                return;
-            }
-        }
-        if(model.getDistance(getID(), new EntityID(249)) > maxDistance) {
-	        List<EntityID> path = search.breadthFirstSearch( me().getPosition(), new EntityID(249));
-	        sendMove(time, path);
-	        return;
-        }
-        else {
-        	List<EntityID> path = planPathToFire(new EntityID(249));
-            if (path != null) {
-                Logger.info("Moving to target");
-                sendMove(time, path);
-                return;
-            }
-        }
-	        
-        //*/
-        
-        
-        //////////////////////////////
-        ////// TODO IMPORTANT ////////
-        //////////////////////////////
-        // dès qu'on commence à eteindre un batiment faire:
-        // actionstate = getStateFromBuilding(Building b).clone();
-        
         //choisit building qui maximize la Qvaleur
-        Collection<Building> all = getBurningBuildings();
+        Set<Building> all = new HashSet<Building>();
+        //on commence par y mettre les buildings en feu qu'on observe
+        for(EntityID entityid : changed.getChangedEntities()) {
+        	StandardEntity entityi = model.getEntity(entityid);
+        	if (entityi instanceof Building) {
+        		Building buildingi = (Building) entityi;         		
+        		if(buildingi.isOnFire()) {
+        			//if already contained we remove it (to update just after) because what we observe is always better
+        			// and add() does not change it in a set if it is already there
+        			if(buildingsOnFire.contains(buildingi)) {
+        				buildingsOnFire.remove(buildingi);
+        			}
+        			all.add(buildingi);
+        			buildingsOnFire.add(buildingi);
+        		}
+        	}
+        }
+        //puis on y ajoute ceux observés par les autres agents
+        Set<Building> buildingsOnFire_copy = new HashSet<Building>(this.buildingsOnFire); //better for concurrentmodificationexception ?
+        for(Building buildingi :buildingsOnFire_copy) {
+        	if( ! all.contains(buildingi))
+        		all.add(buildingi);
+        }
+        //Set<EntityID> all = objectsToIDs(buildings);
+        
+        //System.out.println("Nb buildings on fire : "+this.buildingsOnFire.size());
         
         Building bestBuilding = null;
 
@@ -696,26 +700,37 @@ fire.
         for (Building next : all) {
         	String state = this.getStateFromBuilding(next);
         	float qvalue = this.getQvalue(state);
-        	sout += "\t\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
+        	//on pondère les qvalues par la distance
+        	float dist = model.getDistance(me().getPosition(), next.getID())+1; //+1 in case dist = 0
+        	System.out.println("dist = "+dist);
+        	qvalue = qvalue / (dist/100000);
+        	if(qvalue >= 0)
+        		sout += "\t\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
         	projectionTable.put(next, qvalue);
         }
-        if(all.size()>0) System.out.println(sout);
+        if(all.size()>0) System.out.print(sout);
         
         //now get the best building (highest qvalue)
         if(projectionTable.size() > 0) {
+            System.out.println("Nb buildings on fire : "+this.buildingsOnFire.size());
         	List<Float> sortedvalues = new ArrayList<Float>( projectionTable.values());
         	Collections.sort(sortedvalues, Collections.reverseOrder()); //we want the highest qvalue first -> descending order
         	
 	    	// Do what you need with sortedKeys.
         	float bestqvalue = sortedvalues.get(0); //best q value
-        	//now get all the buildings corresponding to it
-        	List<Building> bestbuildings = new ArrayList<Building>();
-        	for(Building b : projectionTable.keySet()) {
-        		if(projectionTable.get(b) == bestqvalue)
-        			bestbuildings.add(b);
-        	}
         	
-	    	bestBuilding = bestbuildings.get(0); //TODO change this by a random selection
+        	if(bestqvalue >= 0) { // important because sometimes we have concurrent access and getQvalue returns -1 (=building already extinguished)
+	        	//now get all the buildings corresponding to it
+	        	List<Building> bestbuildings = new ArrayList<Building>();
+	        	for(Building b : projectionTable.keySet()) {
+	        		if(projectionTable.get(b) == bestqvalue)
+	        			bestbuildings.add(b);
+	        	}
+	        	
+		    	bestBuilding = bestbuildings.get(0); //TODO change this by a random selection
+        	} else {
+        		bestBuilding = null;
+        	}
 
 
 	    	//System.out.println("found best building "+bestBuilding.getID().getValue()+" with qvalue "+sortedKeys.get(0));
@@ -745,7 +760,7 @@ fire.
 			if (model.getDistance(me().getPosition(), bestBuilding.getID()) <= maxDistance) { //modified
 				
 				extinguishing.replace(me().getID(), bestBuilding.getID()); //added
-				actionstate = getStateFromBuilding(bestBuilding);
+				actionstate = getStateFromBuilding(bestBuilding); // SUPER IMPORTANT dès qu'on commence à éteindre un building
 				
 				
 				Logger.info("Extinguishing " + bestBuilding.getID());
@@ -764,7 +779,7 @@ fire.
 			       //    I.E. don't announce extinguishing.replace(me1, bestBuilding) and don't force him to go the building on the next iteration (as is already)
 			       return;
 			   } else {
-				   System.out.println("ERROR COULD NOT PLAN PATH TO FIRE:");
+				   System.out.println("******** ERROR COULD NOT PLAN PATH TO FIRE: *******");
 				   double dist = model.getDistance(me().getPosition(), bestBuilding.getID());
 			       System.out.println("dist("+me().getPosition()+", "+bestBuilding.getID()+") = "+dist+" / "+maxDistance);
 			   }
@@ -778,51 +793,63 @@ fire.
        // System.out.println("couldn't plan path to a fire, moving randomly");
         sendMove(time, path);
         
-
+        /*  test: ce comportement focalise tous les agents sur le batiment 249 (le plus gros de la map test)
+         *  il vont tous se mettre à  distance du batiment et l'éteindre en même temps dès qu'il prend feu
+         *  pour l'utiliser comment les 3 derniers sous-comportements correspondant de la fonction think  */
         /*
-        // Find the first building that is on fire and extinguish it
-        Collection<EntityID> all = getBurningBuildingsID();
+        // Find all buildings that are on fire
+        Collection<EntityID> all = getBurningBuildings();
         // Can we extinguish any right now?
         for (EntityID next : all) {
-        	if(getNbFightersOnBuilding(next) > 0)
-        		System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
-			// all is already sorted so we can just take the first one that is accessible
-          if (model.getDistance(getID(), next) <= maxDistance) { //modified
+        	System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
+          if (model.getDistance(getID(), next) <= maxDistance && next.getValue() == 249) { //modified
                 Logger.info("Extinguishing " + next);
                 sendExtinguish(time, next, maxPower);
                 sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
-                System.out.println("Extinguishing building " + next);
-                extinguishing.replace(me1, getBuildingfromId(next)); //added
+                System.out.println("Extinguishing " + next);
+                extinguishing.replace(me, next); //added
                 return;
             }
         }
-        
-     
-        Collection<EntityID> all1 = getBurningBuildingsID();
-        // Plan a path to a fire
-        for (EntityID next : all1) {
-            List<EntityID> path = planPathToFire(next);
+        if(model.getDistance(getID(), new EntityID(249)) > maxDistance) {
+	        List<EntityID> path = search.breadthFirstSearch( me().getPosition(), new EntityID(249));
+	        sendMove(time, path);
+	        return;
+        }
+        else {
+        	List<EntityID> path = planPathToFire(new EntityID(249));
             if (path != null) {
                 Logger.info("Moving to target");
                 sendMove(time, path);
                 return;
             }
-        }
-        
-        List<EntityID> path = null;
-        Logger.debug("Couldn't plan a path to a fire.");
-        path = randomWalk();
-        Logger.info("Moving randomly");
-        sendMove(time, path);
-        */
-        
+        }  
+        */       
     }
 
     @Override
     protected EnumSet<StandardEntityURN> getRequestedEntityURNsEnum() {
         return EnumSet.of(StandardEntityURN.FIRE_BRIGADE);
     }
-    
+    /*
+    //getBrokennes() est entre 0 et 100
+    private static int damageCasted(Building b) {
+        if(b != null) {
+            if(b.isBrokennessDefined()) {
+            	int damage = b.getBrokenness(); //entre 0 et 100
+            	//System.out.println("damage = "+damage); 
+            	if(damage < 50)
+            		return 0;
+            	else
+            		return 1;
+            }
+            return 0;
+        }
+        return 0;
+    }
+    */
+    /*
+    //getBrokennes() est entre 0 et 100
     private static int damageCasted(Building b) {
         if(b != null) {
             if(b.isBrokennessDefined()) {
@@ -839,6 +866,7 @@ fire.
         }
         return 0;
     }
+    */
     /*
      * 		 Fierceness		    	Meaning
      * 		-----------------|-----------------------
@@ -879,22 +907,28 @@ fire.
     	System.out.println("-----------------------------------\n");
     	return fieryness;
     }
-    private static int getFireFiercenessCasted(Building b) {
+    private static int getFireFierynessCasted(Building b) {
         if(b != null) {
         	//il se peut qu'on ait réussi à éteindre le building entre temps
-        	if(b.isOnFire() == false){
+        	/*if(b.isOnFire() == false){
         		//System.out.println("firefiercenessCasted() : ERROR BUILDING NOT ON FIRE for "+b);
         		//return -1;
-        		System.out.println("ETEINT, fieryness = "+b.getFieryness());
+        		System.out.println(b+" ETEINT");
         		return -1;
-        	}
-        	//remarque: b.isFierynessDefined() ne marche pas et renvoie tjr false, alors que getfieryness marche !
-
-        	int fieryness = b.getFieryness(); //entre 0 et 8, seul 1,2,3 nous intéressent
+        	}*/
+        	//System.out.println(b+" getfirefierynesscasted()");
+        	int fieryness;
+	        if(b.isFierynessDefined()) {
+	        	fieryness = b.getFieryness(); //entre 0 et 8, seul 1,2,3 nous intéressent
+	        	lastSeenFieryness.put(b.getID(), fieryness);
+	        }else {
+	        	//ceci permet de passer outre les model.merge(changed) qui remette à undefined les fieryness
+	        	fieryness = lastSeenFieryness.get(b.getID());
+	        }
         	//System.out.println("fieryness = "+fieryness+" for "+b); 
 
         	if(fieryness == 0 || fieryness == 4)
-        		System.out.println("firefiercenessCasted() : ERROR FIERYNESS SHOULD NOT BE "+fieryness+" for "+b);
+        		//System.out.println("firefiercenessCasted() : ERROR FIERYNESS SHOULD NOT BE "+fieryness+" for "+b);
         	
         	if(fieryness == 0) return 0;
         	if(fieryness == 1 || fieryness == 5) return 1; //TODO vérifier si ça c'est une bonne idée ou pas
@@ -903,56 +937,6 @@ fire.
         	if(fieryness == 3 || fieryness == 7 || fieryness == 8) return 3;
         }
         return 0;
-    }
-
-    private Collection<Building> getBurningBuildings() {
-        Collection<StandardEntity> e = model.getEntitiesOfType(StandardEntityURN.BUILDING); //renvoi bien tous les building, vérifié ok
-        List<Building> result = new ArrayList<Building>();
-        String sout ="getBurningBuildings : \n";
-        for (StandardEntity next : e) {
-            if (next instanceof Building) {
-                Building b = (Building)next;    
-               // getRealValue(b);
-               if (b.isOnFire()) {// && b.isFierynessDefined()) {
-                    result.add(b);
-                    sout += "\t"+b + ", " +b.isFierynessDefined()+", "+b.getFieryness()+"\n";
-                   // this.lastBuildingState_UpdateBuildingOrGet(b, 0, model); //action 0 = update
-                    buildingsOnFire.add(b.getID());
-                }
-            }
-        }
-        if(result.size()>0)
-        	System.out.println(sout);
-        /*
-        String sout = "";
-        for (EntityID bof : buildingsOnFire)
-        	sout += bof+", ";
-        if (sout.length() > 1)
-        	System.out.println("BUILDINGS ON FIRE = "+sout);
-        	*/
-        System.out.println(me().getID()+"\t NB BUILDINGS ON FIRE : "+this.buildingsOnFire.size());
-        // Sort by distance
-      //  Collections.sort(result, new DistanceSorter(location(), model));
-       // return result;
-        EntityID[] copy_buildingsOnFire = buildingsOnFire.toArray(new EntityID[buildingsOnFire.size()]); //for concurrentaccess
-        List<Building> l = new ArrayList<Building>();
-        for(EntityID curr : copy_buildingsOnFire) {
-        	 Building b = (Building) model.getEntity(curr); //not working
-        	//Building b = (Building) this.lastBuildingState_UpdateBuildingOrGet((Building)model.getEntity(curr), 1, model);
-        	//if (b.getFieryness() == 1 || b.getFieryness() == 2 || b.getFieryness() == 3)
-        	if(b.isOnFire())
-        		l.add(b); 
-        	//test
-        	/*
-        	if(l.size() > 0) {
-        		b = l.get(l.size()-1);
-        		System.out.println("getBurningBuildings, "+b+" fieryness = "+b.getFieryness());
-        	}
-        	*/
-        }
-       // Collections.sort(l, new DistanceSorter(location(), model)); //no need to sort with qvalues
-        return l;
-        
     }
 
     private List<EntityID> planPathToFire_original(EntityID target) {
@@ -971,7 +955,7 @@ fire.
     private List<EntityID> planPathToFire(EntityID target) {
         // Try to get to anything within maxDistance of the target
     	//get all the objets that allow access to the target
-        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance/2); //-> /2 verified, very important        
+        Collection<StandardEntity> targets = model.getObjectsInRange(target, maxDistance); //-> /2 verified, very important        
         if (targets.isEmpty()) {
         	System.out.println("NULL PATH from "+me().getPosition()+" to "+target.getValue());
             return null;
@@ -985,12 +969,134 @@ fire.
         }
 		for(StandardEntity currremove : toremove) //now remove all
 			targets.remove(currremove);
+			
         //return search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
         List<EntityID> path = search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
         System.out.println("path found from "+me().getPosition()+" to "+target);//+" : "+path+"\t"+objectsToIDs(targets));
         return path;
+   
     }
+    //get an estimated score of the current world model (not totally observable)
+  public double getScore() {
+	  //	System.out.println("Calculating score");
+	  Collection<StandardEntity> allbuildings = model.getEntitiesOfType(StandardEntityURN.BUILDING);
+	//  RescueObject[] refuges = model.getObjectsOfType(RescueConstants.TYPE_REFUGE);
+	 // RescueObject[] fs = model.getObjectsOfType(RescueConstants.TYPE_FIRE_STATION);
+	//  RescueObject[] ac = model.getObjectsOfType(RescueConstants.TYPE_AMBULANCE_CENTER);
+	 // RescueObject[] po = model.getObjectsOfType(RescueConstants.TYPE_POLICE_OFFICE);
+	//  RescueObject[] civ = model.getObjectsOfType(RescueConstants.TYPE_CIVILIAN);
+//	  RescueObject[] fb = model.getObjectsOfType(RescueConstants.TYPE_FIRE_BRIGADE);
+	 // RescueObject[] at = model.getObjectsOfType(RescueConstants.TYPE_AMBULANCE_TEAM);
+	  //RescueObject[] pf = model.getObjectsOfType(RescueConstants.TYPE_POLICE_FORCE);
+	  
+
+	  Collection<StandardEntity> refuges = model.getEntitiesOfType(StandardEntityURN.REFUGE);
+	  Collection<StandardEntity> fs = model.getEntitiesOfType(StandardEntityURN.FIRE_STATION);
+	  Collection<StandardEntity> ac = model.getEntitiesOfType(StandardEntityURN.AMBULANCE_CENTRE);
+	  Collection<StandardEntity> po = model.getEntitiesOfType(StandardEntityURN.POLICE_OFFICE);
+	  allbuildings.addAll(refuges);
+	  allbuildings.addAll(fs);
+	  allbuildings.addAll(ac);
+	  allbuildings.addAll(po);
+	  
+	 // RescueObject[] allBuildings = Handy.merge(buildings,Handy.merge(refuges,Handy.merge(fs,Handy.merge(ac,po))));
+	 // RescueObject[] allAgents = Handy.merge(civ,Handy.merge(fb,Handy.merge(at,pf)));
+	  double areaMax = 0;
+	  double areaLeft = 0;
+	  //double hpMax = 0;
+	  //double hpLeft = 0;
+	 // double civilians = 0;
+	//  double civiliansAlive = 0;
+	  //double agents = allAgents.length;
+	  //double agentsAlive = 0;
+	//  for (int i=0;i<allBuildings.length;++i) {
+//		  Building next = (Building)allBuildings[i];
+	/*  long area = next.getTotalArea();
+		  areaMax += area;
+		  switch (next.getFieryness()) {
+		  	  case RescueConstants.FIERYNESS_NOT_BURNT:
+		  		  areaLeft += area;
+			  break;
+		  }
+	  
+  		}
+  */
+		  
+	  for (StandardEntity entityi : allbuildings) {
+		  Building next = (Building) entityi;
+		  long area = next.getTotalArea();
+		  if(next.isFierynessDefined()) { // if fieryness undefined, we don't know
+			  areaMax += area;
+			  switch (next.getFieryness()) {
+			  	  case RescueConstants.FIERYNESS_NOT_BURNT:
+			  		  areaLeft += area;
+				  break;
+			  }
+		  }
+	  }/*
+	  for (int i=0;i<allAgents.length;++i) {
+		  Humanoid next = (Humanoid)allAgents[i];
+		  if (next.isAlive()) ++agentsAlive;
+		  if (next.isCivilian()) {
+			  ++civilians;
+			  if (next.isAlive()) ++civiliansAlive;
+		  }
+		  hpMax += RescueConstants.MAX_HP;
+		  hpLeft += next.getHP();
+	  }*/
+	  //double score = (agentsAlive + (hpLeft/hpMax)) * Math.sqrt(areaLeft/areaMax);
+	  double score = Math.sqrt(areaLeft/areaMax);
+	  //	System.out.println("Agents alive: "+agentsAlive+", hpLeft/hpMax="+hpLeft+"/"+hpMax+"="+(hpLeft/hpMax)+", areaLeft/areaMax="+areaLeft+"/"+areaMax+"="+(areaLeft/areaMax)+" -> total score="+score);
+	  return score;
+  }
     
-    
+  void Qtable_savetofile() {
+	  //write to file 
+	  try{
+	    File fileTwo=new File("Qtable_saved.txt");
+	    FileOutputStream fos=new FileOutputStream(fileTwo);
+	        PrintWriter pw=new PrintWriter(fos);
+
+	        for(Map.Entry<String,Float> m :Qtable.entrySet()){
+	            pw.println(m.getKey()+"="+m.getValue());
+	        }
+
+	        pw.flush();
+	        pw.close();
+	        fos.close();
+	    }catch(Exception e){}
+  }
+  void Qtable_loadfromfile() {
+	   //read from file 
+	    try{
+	        File toRead=new File("Qtable_saved.txt");
+	        FileInputStream fis=new FileInputStream(toRead);
+
+	        Scanner sc=new Scanner(fis);
+
+	        HashMap<String,Float> mapInFile=new HashMap<String,Float>();
+
+	        //read data from file line by line:
+	        String currentLine;
+	        while(sc.hasNextLine()){
+	            currentLine=sc.nextLine();
+	            //now tokenize the currentLine:
+	            StringTokenizer st=new StringTokenizer(currentLine,"=",false);
+	            //put tokens to currentLine in map
+	            mapInFile.put(st.nextToken(), Float.parseFloat(st.nextToken()));
+	        }
+	        fis.close();
+	        sc.close();
+	        
+	        //now we clear the current Qtable and load the one from the file into it
+	        Qtable.clear();
+	        Qtable.putAll(mapInFile);
+
+	        //print All data in MAP
+	        for(Map.Entry<String,Float> m :mapInFile.entrySet()){
+	            System.out.println(m.getKey()+" : "+m.getValue());
+	        }
+	    }catch(Exception e){}
+  }
     
 }

@@ -54,7 +54,7 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
         Blockade target = getTargetBlockade();
         if (target != null) {
             Logger.info("Police : Clearing blockade " + target);
-            System.out.println("Police : clearing blockade "+ target);
+            //System.out.println("Police : clearing blockade "+ target);
             sendSpeak(time, 1, ("Clearing " + target).getBytes());
 //            sendClear(time, target.getX(), target.getY());
             List<Line2D> lines = GeometryTools2D.pointsToLines(GeometryTools2D.vertexArrayToPoints(target.getApexes()), true);
@@ -88,7 +88,7 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
         }
         Logger.debug("Police : Couldn't plan a path to a blocked road");
         Logger.info("Police : Moving randomly");
-        System.out.println("Police : Couldn't plan a path to a blocked road => Moving randomly");
+        //System.out.println("Police : Couldn't plan a path to a blocked road => Moving randomly");
         sendMove(time, randomWalk());
     }
 
@@ -111,7 +111,7 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
 
     private Blockade getTargetBlockade() {
         Logger.debug("Police : Looking for target blockade");
-    	System.out.println("Police : looking for target blockade");
+    	//System.out.println("Police : looking for target blockade");
         Area location = (Area)location();
         Logger.debug("Police : Looking in current location");
         Blockade result = getTargetBlockade(location, distance);
@@ -124,11 +124,11 @@ public class SamplePoliceForce extends AbstractSampleAgent<PoliceForce> {
             location = (Area)model.getEntity(next);
             result = getTargetBlockade(location, distance);
             if (result != null) {
-            	System.out.println("Police : target found in NEW neighbour location");
+            	//System.out.println("Police : target found in NEW neighbour location");
                 return result;
             }
         }
-    	System.out.println("Police : no target found");
+    	//System.out.println("Police : no target found");
         return null;
     }
 
