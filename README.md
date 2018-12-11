@@ -11,7 +11,11 @@ et le dossier RobotRescue/ correspond au projet sous eclipse
 
 
 __________________
-pour lancer la simulation, dans boot/ lancer:
+pour lancer la simulation, à la racinte faire "ant" la première fois pour compiler
+besoin de JAVA_HOME dans le .bashrc, ex:
+export JAVA_HOME="/usr/lib/jvm/jdk1.8.0_171/jre/"
+
+Ensuite dans boot/ lancer:
 ```
  ./start.sh ../maps/gml/test/
 ```
