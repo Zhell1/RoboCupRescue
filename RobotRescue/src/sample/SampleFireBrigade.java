@@ -117,6 +117,8 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 				moyenne des distances au refuge
      * 				médiane des total_area
      * 
+     * 		observation: meilleur état observé après 33 itérations est state_1_1_0_1_1_0_0 (=239.31131)
+     * 
      * remarques:
      * 
      *      requiremove (précédemment nommé 'distance à l'agent') = important pour qu'il apprenne à rejoindre les autres agents si ca vaut le coup de se déplacer
@@ -137,7 +139,6 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
      * 		TODO utiliser température ?
  	 * 
      *  autre idée: mettre le nbagents et le nbvoisins en full (pas de cast), ça change selon la map mais pas grave
-	 *      retirer low_water, damage ?
      *
      */
     
@@ -196,7 +197,18 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         
         
         start = System.currentTimeMillis();
-
+        
+        //init fieryness for those we can see
+        Collection<StandardEntity> allbuildings = model.getEntitiesOfType(StandardEntityURN.BUILDING);
+    	for (StandardEntity se  : allbuildings) {
+    		if(se instanceof Building) {
+    			Building buildingchanged = (Building)se;
+    			if(buildingchanged.isFierynessDefined()) {
+    				lastSeenFieryness.put(buildingchanged.getID(), buildingchanged.getFieryness());
+    				//System.out.println("observing "+buildingchanged+", fieryness = "+buildingchanged.getFieryness());
+    			}
+    		}
+    	}
     }
 
     
@@ -413,6 +425,26 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	//System.out.println("changed = "+changed);
     	model.merge(changed); 
     	
+    	//on met à jour les valeurs de firefieryness qu'on observe à ce timestep (ou remet les lastseen valeurs dedans)
+    	for (EntityID changedentity : changed.getChangedEntities()) {
+    		StandardEntity se = model.getEntity(changedentity);
+    		if(se instanceof Building) {
+    			Building buildingchanged = (Building)se;
+    			if(buildingchanged.isFierynessDefined()) {
+    				lastSeenFieryness.put(buildingchanged.getID(), buildingchanged.getFieryness());
+    				//System.out.println("observing "+buildingchanged+", fieryness = "+buildingchanged.getFieryness());
+    			}else {
+    				//remet lastseen valeur
+    				int fieryness = lastSeenFieryness.get(buildingchanged.getID());
+    				buildingchanged.setFieryness(fieryness);
+    				System.out.println("SET FIERYNESS TO "+fieryness);
+    			}
+    		}
+    	}
+    	
+    	//reload fieryness that were changed to undefined
+    	//Collection<StandardEntity> allbuildings = model.getEntitiesOfType(StandardEntityURN.BUILDING);
+    	
     	FireBrigade me = me();
     	EntityID previousbuildingid  = extinguishing.get(me().getID());
     	int nbagentsonbuilding = 0;
@@ -434,6 +466,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         	Building previousbuilding = (Building) model.getEntity(previousbuildingid);
 	    	String sout = "previousbuilding = "+previousbuilding.getID()+", isOnFire() = "+previousbuilding.isOnFire();
 	    	if(previousbuilding.isFierynessDefined()) sout+= ", fieryness = "+previousbuilding.getFieryness();
+	    	//else previousbuilding.setFieryness(lastSeenFieryness.get(previousbuilding.getID())); //remet ancienne valeur dedans
 	    	System.out.println(sout);
 	    	//si le building est éteint où qu'un autre agent à indiqué qu'il était éteint en le retirant:
 	    	if(previousbuilding.isOnFire() == false ||  ! buildingsOnFire.contains(previousbuilding.getID()) ) {
@@ -443,13 +476,25 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     			
     			//now we do the Qlearning
     	        int newfieryness = this.getFireFierynessCasted(previousbuilding);
+    	        sout = "newfieryness = "+newfieryness+" for "+previousbuilding+"\n";
+    	        /* //already dealt with inn getfirefierynesscasted() now :
+    	        if(newfieryness  == 0) { //ne devrait pas arriver mais ça arrive je sais pas pourquoi, donc on le gère en remettant l'ancienne valeur : 
+    	        	int oldfieryness = lastSeenFieryness.get(previousbuilding.getID());
+    	        	sout+= "\toldfieryness = "+oldfieryness+" ===> replace by old !";
+    	        	previousbuilding.setFieryness(oldfieryness);
+    	        	newfieryness = oldfieryness;
+    	        }
+    	        */
+    	        System.out.println(sout);
+    	        if(newfieryness == 0) System.out.println("\n*\n********* ERROR NEW AND OLD FIERYNESS AT 0 IN THINK() ******\n*\n*");
     	        
     			float multiplier = 1;
-    			if(newfieryness == 1) multiplier = 2/3; // 1/3 destroyed => 2/3 intact
-    			if(newfieryness == 2) multiplier = 1/3; //only 1/3 intact
-    			if(newfieryness == 3) multiplier = 0; //nothing intact
+    			if(newfieryness == 1) multiplier = (float)2.0/(float)3.0; // 1/3 destroyed => 2/3 intact
+    			if(newfieryness == 2) multiplier = (float)1.0/(float)3.0; //only 1/3 intact
+    			if(newfieryness == 3) multiplier = (float)0; //nothing intact
     			float reward = 1 + previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
 				reward = reward / nbagentsonbuilding ; //nbagentsonbuilding est une estimation entre [nbagents, 1]
+				
     			//TODO diviser par le temps mis à éteindre le building
  
     			//TODO diviser la reward par le nombre d'agents qui étaient dessus ?
@@ -489,7 +534,7 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
     			float newval = oldqvalue + _alpha * (reward - oldqvalue);
     			Qtable.put(actionstate, newval); 
 
-                System.out.println("\tGot reward of " + reward);
+                System.out.println("\tGot reward of " + reward+" with multiplier= "+multiplier);
                 System.out.println("\tnew qvalue = "+newval);
     			
     			//reset values now
@@ -601,9 +646,9 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
         	String state = this.getStateFromBuilding(next);
         	float qvalue = this.getQvalue(state);
         	//on pondère les qvalues par la distance
-        	float dist = model.getDistance(me().getPosition(), next.getID())+1; //+1 in case dist = 0
-        	System.out.println("dist = "+dist);
-        	//qvalue = qvalue / (dist/100000); //TODO est-ce une bonne idée ? distance pas forcément très pertinent dans ce cas
+        	//float dist = model.getDistance(me().getPosition(), next.getID())+1; //+1 in case dist = 0
+        	//System.out.println("dist = "+dist);
+        	//qvalue = qvalue / (dist/100000); //TODO est-ce une bonne idée ? NON : distance pas forcément très pertinent dans ce cas et biaise trop les qvaleurs
         	if(qvalue >= 0)
         		sout += "\t\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
         	projectionTable.put(next, qvalue);
@@ -627,7 +672,7 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
 	        			bestbuildings.add(b);
 	        	}
 	        	
-		    	bestBuilding = bestbuildings.get(0); //TODO change this by a random selection
+		    	bestBuilding = bestbuildings.get(0); //TODO change this by a random uniform selection
         	} else {
         		bestBuilding = null;
         	}
@@ -710,8 +755,7 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
 				6					Extinguished, but moderately damage.
 				7					Extinguished, but severely damage.
 				8					Completely burned down.
-		et on doit s'inspirer de la façon dont le vrai score est calculé pour avoir une bonne convergence
-		donc on prends:
+		et on doit s'inspirer de la façon dont le vrai score est calculé pour avoir une bonne convergence, donc on prends:
 	     	Fierceness 				Score rules
 				-------------|----------------------
 				0 					No penalty
@@ -720,53 +764,34 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
 				2 or 6				2/3 of the building’s area is considered destroyed.
 				3, 7 or 8			The whole building is considered destroyed.
      */
-    // not used but can be useful to check if the values you get from b.get***() are the same
-    // as the ones from the actual fulldescription
-    // it was already the case for the fieryness so it works fine without it
-    private static int getRealValue(Building b) {
-    	System.out.println("\n-----------------------------------");
-    	String description = b.getFullDescription();
-    	System.out.println(description+"\n\t|\n\tv");
-    	String [] stab = description.split("urn:rescuecore2.standard:property:fieryness = ");
-    	for(String stabi : stab) {
-    		System.out.println(stabi);
-    	}
-    	System.out.println("fieryness found     = "+(stab[1].substring(0, 1))); //(0,1) because only 1 char for fieryness
-    	System.out.println("fieryness attribute = "+b.getFieryness());
-    	int fieryness = -1;
-
-    	System.out.println("-----------------------------------\n");
-    	return fieryness;
-    }
+    // !! this function should only be called for building that have been on fire at least once in the past, not on new buildings
     private static int getFireFierynessCasted(Building b) {
         if(b != null) {
-        	//il se peut qu'on ait réussi à éteindre le building entre temps
-        	/*if(b.isOnFire() == false){
-        		//System.out.println("firefiercenessCasted() : ERROR BUILDING NOT ON FIRE for "+b);
-        		//return -1;
-        		System.out.println(b+" ETEINT");
-        		return -1;
-        	}*/
-        	//System.out.println(b+" getfirefierynesscasted()");
         	int fieryness;
 	        if(b.isFierynessDefined()) {
-	        	fieryness = b.getFieryness(); //entre 0 et 8, seul 1,2,3 nous intéressent
-	        	lastSeenFieryness.put(b.getID(), fieryness);
+	        	fieryness = b.getFieryness();
+	        	//don't change lastseenfieryness here ! do it in think() with "changed"
+	            System.out.println("firefiercenessCasted() : found fieryness = "+fieryness+" for "+b);
+	        	//lastSeenFieryness.put(b.getID(), b.getFieryness());
 	        }else {
 	        	//ceci permet de passer outre les model.merge(changed) qui remette à undefined les fieryness
 	        	fieryness = lastSeenFieryness.get(b.getID());
-	        }
-        	//System.out.println("fieryness = "+fieryness+" for "+b); 
+	            System.out.println("firefiercenessCasted() : reload last_seen fieryness = "+fieryness+" value for "+b);
 
-        	if(fieryness == 0 || fieryness == 4)
-        		//System.out.println("firefiercenessCasted() : ERROR FIERYNESS SHOULD NOT BE "+fieryness+" for "+b);
-        	
-        	if(fieryness == 0) return 0;
-        	if(fieryness == 1 || fieryness == 5) return 1; //TODO vérifier si ça c'est une bonne idée ou pas
-        	if(fieryness == 4 ) return 1;
-        	if(fieryness == 2 || fieryness == 6) return 2;
-        	if(fieryness == 3 || fieryness == 7 || fieryness == 8) return 3;
+	        }        	
+        	if(fieryness == 0) { //ne devrait pas arriver mais ça arrive je sais pas pourquoi, donc on le gère en remettant l'ancienne valeur : 
+  	        	int oldfieryness = lastSeenFieryness.get(b.getID());
+  	        	System.out.println("\toldfieryness = "+oldfieryness+" ===> replace by old !");
+  	        	b.setFieryness(oldfieryness);
+  	        	fieryness = oldfieryness;
+  	        	if(fieryness == 0) System.out.println("****** ERROR NEW AND OLD FIERYNESS AT 0 IN getFireFierynessCasted() *******"); //should not happen
+  	        }
+        	  
+        	if(fieryness == 1 || fieryness == 5 || fieryness == 4 ) return 1;	//slight damage
+        	if(fieryness == 2 || fieryness == 6) return 2;					 	//medium damage
+        	if(fieryness == 3 || fieryness == 7 || fieryness == 8) return 3; 	//totally destroyed
         }
+        System.out.println("firefiercenessCasted() : ERROR NULL BUILDING");
         return 0;
     }
 
@@ -805,21 +830,17 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
         List<EntityID> path = search.breadthFirstSearch(me().getPosition(), objectsToIDs(targets));
         System.out.println("path found from "+me().getPosition()+" to "+target);//+" : "+path+"\t"+objectsToIDs(targets));
         return path;
-   
     }
-
-    
   void Qtable_savetofile() {
 	  //write to file 
 	  try{
 	    File fileTwo=new File("Qtable_saved.txt");
 	    FileOutputStream fos=new FileOutputStream(fileTwo);
 	        PrintWriter pw=new PrintWriter(fos);
-
+	        
 	        for(Map.Entry<String,Float> m :Qtable.entrySet()){
 	            pw.println(m.getKey()+"="+m.getValue());
 	        }
-
 	        pw.flush();
 	        pw.close();
 	        fos.close();
@@ -830,7 +851,6 @@ mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont
 	    try{
 	        File toRead=new File("Qtable_saved.txt");
 	        FileInputStream fis=new FileInputStream(toRead);
-
 	        Scanner sc=new Scanner(fis);
 
 	        HashMap<String,Float> mapInFile=new HashMap<String,Float>();
