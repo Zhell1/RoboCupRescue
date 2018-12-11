@@ -63,7 +63,7 @@ ignition.random.lambda: 0.5
 
 __________________
 
-Liens utiles:
+- Liens utiles:
 
 bon nombre de ressources en ligne, en particulier sur la page de la compétition :
 
