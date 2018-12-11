@@ -32,16 +32,15 @@ __________________
      * 
      * 		DESCRIPTION OF STATE  	NB_VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
      * 
-     * 		- the fire's fierceness		3 			firefiercenessCasted(Building b)	-> 1,2,3 	(no intact)
-     * 		- the building's damage		3 			damageCasted(Building b) 			-> 0,1,2 	(no intact) split 33% / 66%, original value in [1,100] 
-     * 		- low_water()				2 			getLowWaterCasted() 				-> 0,1
-     * 		- requiremove				2 			getRequireMoveCasted(Building b)	-> 0,1
-     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		-> 0,1
-     * 		- total area of building	3 			getTotalAreaCasted(Building b) 		-> 0,1,2
-     * 		- get neighbours		2 			getNbNeighboursCasted(Building b) 	-> 0,1
-     * 		- nbAgentsonBuilding (!)	3 			GetNbAgentsOnBuildingCasted(Building b)-> 0,1,2 
-
-     * 		=> 3^4 * 2^4 = 1296 états
+   	 *   - the fire's fierceness		3 			getFireFierynessCasted(Building b)	 -> 1,2,3 	(no intact)
+ 	   *		 - low_water()				2 			getLowWaterCasted() 				 -> 0,1
+     * 		- requiremove				2 			getRequireMoveCasted(Building b)	 -> 0,1
+     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		 -> 0,1
+     * 		- total area of building	2 			getTotalAreaCasted(Building b) 		 -> 0,1
+ 	   *	 	- agentsonBuilding (!)		2 			getAgentsOnBuildingCasted(Building b)-> 0,1
+     *   - building's composition	3			b.getBuildingCode();				 -> 0,1,2
+     *
+     * 		=> 3*2*2*2*2*2*3 = 288 états 
 ```
 __________________
 
