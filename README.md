@@ -28,17 +28,17 @@ __________________
 
 états du Qlearning:
 ```
-  * description des états:
+     * description des états:
      * 
-     * 		DESCRIPTION OF STATE  	NB_VALUES		FUNCTION TO GET IT					RETURN		COMMENTS
+     * 		DESCRIPTION OF STATE  	    NB_VALUES		FUNCTION TO GET IT			  RETURN	COMMENTS
      * 
-   	 *   - the fire's fierceness		3 			getFireFierynessCasted(Building b)	 -> 1,2,3 	(no intact)
- 	   *		 - low_water()				2 			getLowWaterCasted() 				 -> 0,1
-     * 		- requiremove				2 			getRequireMoveCasted(Building b)	 -> 0,1
-     * 		- distance au refuge		2 			getDistRefugeCasted(Building b)		 -> 0,1
-     * 		- total area of building	2 			getTotalAreaCasted(Building b) 		 -> 0,1
- 	   *	 	- agentsonBuilding (!)		2 			getAgentsOnBuildingCasted(Building b)-> 0,1
-     *   - building's composition	3			b.getBuildingCode();				 -> 0,1,2
+     *          - the fire's fierceness		3 		getFireFierynessCasted(Building b)	 -> 1,2,3 	(no intact)
+     *		- low_water()			2 		getLowWaterCasted() 			 -> 0,1
+     * 		- requiremove			2 		getRequireMoveCasted(Building b)	 -> 0,1
+     * 		- distance au refuge		2 		getDistRefugeCasted(Building b)		 -> 0,1
+     * 		- total area of building	2 		getTotalAreaCasted(Building b) 		 -> 0,1
+     *	 	- agentsonBuilding (!)		2 		getAgentsOnBuildingCasted(Building b)	 -> 0,1
+     *          - building's composition	3		b.getBuildingCode();			 -> 0,1,2
      *
      * 		=> 3*2*2*2*2*2*3 = 288 états 
 ```
