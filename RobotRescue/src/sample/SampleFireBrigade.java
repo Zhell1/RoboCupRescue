@@ -66,8 +66,6 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     
     //--------------------------------------------------------------------------
     
-   
-    
     private static final String MAX_WATER_KEY = "fire.tank.maximum";
     private static final String MAX_DISTANCE_KEY = "fire.extinguish.max-distance";
     private static final String MAX_POWER_KEY = "fire.extinguish.max-sum";
@@ -207,108 +205,6 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         System.out.println("********preprocessing map *****");
         System.out.println("__________________________________");
         
-
-        /*
-        //calculate diagonal distance of the map
-		Pair<Pair<Integer, Integer>, Pair<Integer, Integer>> worldbounds = model.getWorldBounds();
-		Pair<Integer, Integer> pointA = worldbounds.first();
-		Pair<Integer, Integer> pointB = worldbounds.second();
-		int x1 = pointA.first();
-		int y1 = pointA.second();
-		int x2 = pointB.first();
-		int y2 = pointB.second();
-		int diagonaldistmap = (int) Math.sqrt((y2 - y1) * (y2 - y1) + (x2 - x1) * (x2 - x1));
-        */
-		
-        //calculate    analyzedborne_nbneighbours
-        /*
-        int nbneighbours_mean_size = 0;
-        int nbneighbours_nbval = 0;
-        int nbneighbours_valmax = 0;
-        
-        int distrefuge_mean_size = 0;
-        int distrefuge_nbval = 0;
-        int distrefuge_valmax = 0;
-        
-        int totalarea_mean = 0;
-        int totalarea_nbval = 0;
-        int totalarea_minval = -1;
-        int totalarea_maxval = 0;
-        
-        
-        for (StandardEntity building : model.getEntitiesOfType(StandardEntityURN.BUILDING)){
-        	List<EntityID> neighbourslist;
-			if(building instanceof Building){
-				
-				//nb neighbours
-        		neighbourslist = ((Building) building).getNeighbours();
-				int listsize = neighbourslist.size();
-				nbneighbours_mean_size += listsize;
-				nbneighbours_nbval++;
-				if(listsize > nbneighbours_valmax) nbneighbours_valmax = listsize;
-				
-				//distance au refuge
-				int distmin = -1;
-				//EntityID closestRefuge;
-				for (EntityID refugeID : refugeIDs) {
-					int distrefuge = model.getDistance(building.getID(), refugeID);
-					if(distmin == -1){
-						distmin = distrefuge; //init
-						//closestRefuge = refugeID; //init
-					}
-					if(distrefuge < distmin){
-						distmin = distrefuge;
-						//closestRefuge = refugeID;
-					}
-				}
-				if(distmin != -1) { //si on a trouvé un refuge accessible
-					distrefuge_mean_size += distmin;
-					distrefuge_nbval++;
-					if(distmin > distrefuge_valmax) distrefuge_valmax = distmin; //max ok
-					Hashmap_distrefuge.put(building.getID(), distmin);
-				} else { //no refuge found
-					Hashmap_distrefuge.put(building.getID(), -1); // -1 means no refuge found 
-				}
-				
-				//total area
-				int totalarea = ((Building) building).getTotalArea();
-				totalarea_mean += totalarea;
-				totalarea_nbval++;
-				if(totalarea > totalarea_maxval) totalarea_maxval = totalarea; //max
-				if(totalarea_minval == -1) totalarea_minval = totalarea; //init min
-				if(totalarea < totalarea_minval) totalarea_minval = totalarea; //min
-			}
-        }
-        //neighbours
-        nbneighbours_mean_size = nbneighbours_mean_size / nbneighbours_nbval;
-        //definie la borne comme tu veux now
-        analyzedborne_nbneighbours = nbneighbours_mean_size;  //TODO verifier si c'est bien ou si il faut modif
-        if(analyzedborne_nbneighbours == nbneighbours_valmax && nbneighbours_valmax >= 2) analyzedborne_nbneighbours = nbneighbours_valmax -1; //sinon la borne est inutile //par sécurité mais peut-être pas utile
-        System.out.println("Mean_nbneighbours = "+nbneighbours_mean_size+"\t\tvalmax = "+nbneighbours_valmax);
-        System.out.println("chosen borne = "+analyzedborne_nbneighbours);
-        
-        //refuge dist
-        distrefuge_mean_size = distrefuge_mean_size / distrefuge_nbval;
-        //definie la borne comme tu veux now
-        analyzedborne_distrefuge = distrefuge_mean_size;  //TODO verifier si c'est bien ou si il faut modif
-        System.out.println("\nMean_distrefuge = "+distrefuge_mean_size+"\t\tvalmax = "+distrefuge_valmax);
-        System.out.println("chosen borne = "+analyzedborne_distrefuge);
-        
-        //totalarea
-        totalarea_mean = totalarea_mean / totalarea_nbval;
-        //definie la borne comme tu veux now
-        analyzedborne_1_totalarea = totalarea_minval+(totalarea_maxval-totalarea_minval)/3;
-        analyzedborne_2_totalarea = totalarea_minval+2*(totalarea_maxval-totalarea_minval)/3;
-        System.out.println("\nMean_totalarea = "+totalarea_mean+"\t\tvalmin = "+totalarea_minval+"\tvalmax = "+totalarea_maxval);
-        System.out.println("chosen bornes = "+analyzedborne_1_totalarea+", "+analyzedborne_2_totalarea);
-        */
-        
-        
-        //TODO : ça serait BEAUCOUP mieux de faire tout ça avec des quantiles pour avoir plus d'entropie
-        // pour faire ça, stocker toutes les valeurs trouvées dans un array puis faire un sort()
-        // ensuite regarder à partir de la .length la valeur à 50% par exemple et prendre ça comme estimation du quantile "< 33%"
-        
-        
         /* il faut en preprocessing:
          * 				moyenne des distances au refuge			analyzedborne_distrefuge 
          * 				médiane des total_area					analyzedborne_totalarea
@@ -368,7 +264,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	
     	sout += "_"+getFireFierynessCasted(b);
     	sout += "_"+getLowWaterCasted();
-    	sout += "_"+getRequireMoveCasted(b);
+    	sout += "_"+getRequireMoveCasted(b);			//-> PB pas pris en compte dans le reward
     	sout += "_"+getDistRefugeCasted(b);				//ok
     	sout += "_"+getTotalAreaCasted(b);
     	sout += "_"+getAgentsOnBuildingCasted(b);
@@ -495,16 +391,19 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     	 * pour faire plus d'exploration
     	 * 
     	 * 
+    	 * diviser par le temps la reward:
+    	 * utiliser les timesteps ou une mesure de temps interne à la plateforme
+    	 * 
+    	 * 
+    	 * faire un tirage uniforme pour le choix du building selon les qvaleur
+         *	float bestqvalue = sortedvalues.get(0); //
     	 * 
     	 * 
     	 * 
     	 * 
     	 * 
-    	 * 
-    	 * 
-    	 * 
-    	 * 
-    	 * 
+    	 *   sout += "_"+getRequireMoveCasted(b);			//-> PB pas pris en compte dans le reward
+    	 *      devrait aider en divisant par le temps si on commence à compter quand on choisit (et pas quand on éteint)
     	 * 
     	 * 
     	 * 
@@ -550,25 +449,19 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
     			if(newfieryness == 2) multiplier = 1/3; //only 1/3 intact
     			if(newfieryness == 3) multiplier = 0; //nothing intact
     			float reward = 1 + previousbuilding.getTotalArea()*multiplier; // +1 to get a reward even if the building is too much destroyed
-				reward = reward / nbagentsonbuilding ;
-    			
-    			//TODO URGENT, ne plus faire reward cumulée mais juste diviser par le temps passé à éteindre ce building
-    			// c'est à dire entre le moment où on le choisit comme bestbuilding et maintenant (juste utiliser une variable previoustime?)
-    			/*long elapsedtime = System.currentTimeMillis()-start;
-    			elapsedtime /= 1000; //in seconds
-    			rewardcumul += reward;
-    			reward = rewardcumul / elapsedtime;
-    			*/
+				reward = reward / nbagentsonbuilding ; //nbagentsonbuilding est une estimation entre [nbagents, 1]
+    			//TODO diviser par le temps mis à éteindre le building
+ 
     			//TODO diviser la reward par le nombre d'agents qui étaient dessus ?
-    			// sinon il se mettent tous sur ceux où il y a deja des agents car ca donne une reward facile !?
+    			// sinon il se mettent tous sur ceux où il y a deja des agents car ca donne une reward facile
     			
     			//TODO
     			/*
-    			 * remarque rapport :il faut passer en reward cumulée divisée par le temps cumulé
+    			 * remarque rapport :il faut passer en reward divisée par le temps 
     			 * sinon ils apprenent juste à choisir de grosses reward (gros batiments)
     			 * mais pas spécialement à être efficace  ?
-    			 * mais normalement non car si il fait des petits batiments pleins de fois
-    			 * ca lui rapporte autant de qvalue que de faire un gros batiment une fois non ?
+    			 * on peut crorie que si il fait des petits batiments pleins de fois
+    			 * ca lui rapporte autant de qvalue que de faire un gros batiment une fois ?
     			 * => non ! car c'est l'expected reward qu'il cherche à prédire,
     			 * et un gros batiment aura forcément une expected reward plus grande
     			 * or si il prédit bien on ajoute +0 et ça change pas
@@ -581,7 +474,8 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
 				danger, the utility function returns the amount of points lost if the building in danger catches
 				fire.
 				=> prendre en compte la surface du batiment * fieryness + somme( surface voisin*fieryness_voisin, for all voisins)
-				=> ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, après préprocessing de la carte pour l'ensemble des surfaces des voisins des batiments)
+				=> ca peut être pertinent de mettre dans l'état une valeur de la surface des voisins (en 3 ou 4 valeurs, 
+mais on  ne peut pas le faire en preprocessing car les batiments voisins ne sont pas connus
 				*/
     			
     			if(actionstate == null) System.out.println("ERROR ACTIONSTATE IS NULL");
@@ -643,6 +537,12 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         }
         // Are we out of water?
         if (me1.isWaterDefined() && me1.getWater() == 0) {
+
+        	//TODO j'ai ajouté ça, à vérifier
+			//reset values now
+			actionstate = null;
+			extinguishing.replace(me().getID(), nullBuilding); 
+			
             // Head for a refuge
             List<EntityID> path = search.breadthFirstSearch(me().getPosition(), refugeIDs);
             if (path != null) {
@@ -703,7 +603,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         	//on pondère les qvalues par la distance
         	float dist = model.getDistance(me().getPosition(), next.getID())+1; //+1 in case dist = 0
         	System.out.println("dist = "+dist);
-        	qvalue = qvalue / (dist/100000);
+        	//qvalue = qvalue / (dist/100000); //TODO est-ce une bonne idée ? distance pas forcément très pertinent dans ce cas
         	if(qvalue >= 0)
         		sout += "\t\t"+next.getID()+"\t"+state+"\t"+qvalue+"\n";
         	projectionTable.put(next, qvalue);
@@ -791,82 +691,13 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         path = randomWalk();
         Logger.info("Moving randomly");
        // System.out.println("couldn't plan path to a fire, moving randomly");
-        sendMove(time, path);
-        
-        /*  test: ce comportement focalise tous les agents sur le batiment 249 (le plus gros de la map test)
-         *  il vont tous se mettre à  distance du batiment et l'éteindre en même temps dès qu'il prend feu
-         *  pour l'utiliser comment les 3 derniers sous-comportements correspondant de la fonction think  */
-        /*
-        // Find all buildings that are on fire
-        Collection<EntityID> all = getBurningBuildings();
-        // Can we extinguish any right now?
-        for (EntityID next : all) {
-        	System.out.println(next+" => "+getNbFightersOnBuilding(next)+" pompiers dessus"); //added
-          if (model.getDistance(getID(), next) <= maxDistance && next.getValue() == 249) { //modified
-                Logger.info("Extinguishing " + next);
-                sendExtinguish(time, next, maxPower);
-                sendSpeak(time, 1, ("Extinguishing " + next).getBytes());
-                System.out.println("Extinguishing " + next);
-                extinguishing.replace(me, next); //added
-                return;
-            }
-        }
-        if(model.getDistance(getID(), new EntityID(249)) > maxDistance) {
-	        List<EntityID> path = search.breadthFirstSearch( me().getPosition(), new EntityID(249));
-	        sendMove(time, path);
-	        return;
-        }
-        else {
-        	List<EntityID> path = planPathToFire(new EntityID(249));
-            if (path != null) {
-                Logger.info("Moving to target");
-                sendMove(time, path);
-                return;
-            }
-        }  
-        */       
+        sendMove(time, path); 
     }
 
     @Override
     protected EnumSet<StandardEntityURN> getRequestedEntityURNsEnum() {
         return EnumSet.of(StandardEntityURN.FIRE_BRIGADE);
     }
-    /*
-    //getBrokennes() est entre 0 et 100
-    private static int damageCasted(Building b) {
-        if(b != null) {
-            if(b.isBrokennessDefined()) {
-            	int damage = b.getBrokenness(); //entre 0 et 100
-            	//System.out.println("damage = "+damage); 
-            	if(damage < 50)
-            		return 0;
-            	else
-            		return 1;
-            }
-            return 0;
-        }
-        return 0;
-    }
-    */
-    /*
-    //getBrokennes() est entre 0 et 100
-    private static int damageCasted(Building b) {
-        if(b != null) {
-            if(b.isBrokennessDefined()) {
-            	int damage = b.getBrokenness(); //entre 0 et 100
-            	//System.out.println("damage = "+damage); 
-            	if(damage < borne_1_damage)
-            		return 0;
-            	if(damage < borne_2_damage)
-            		return 1;
-            	else
-            		return 2;
-            }
-            return 0;
-        }
-        return 0;
-    }
-    */
     /*
      * 		 Fierceness		    	Meaning
      * 		-----------------|-----------------------
@@ -976,79 +807,7 @@ public class SampleFireBrigade extends AbstractSampleAgent<FireBrigade> {
         return path;
    
     }
-    //get an estimated score of the current world model (not totally observable)
-  public double getScore() {
-	  //	System.out.println("Calculating score");
-	  Collection<StandardEntity> allbuildings = model.getEntitiesOfType(StandardEntityURN.BUILDING);
-	//  RescueObject[] refuges = model.getObjectsOfType(RescueConstants.TYPE_REFUGE);
-	 // RescueObject[] fs = model.getObjectsOfType(RescueConstants.TYPE_FIRE_STATION);
-	//  RescueObject[] ac = model.getObjectsOfType(RescueConstants.TYPE_AMBULANCE_CENTER);
-	 // RescueObject[] po = model.getObjectsOfType(RescueConstants.TYPE_POLICE_OFFICE);
-	//  RescueObject[] civ = model.getObjectsOfType(RescueConstants.TYPE_CIVILIAN);
-//	  RescueObject[] fb = model.getObjectsOfType(RescueConstants.TYPE_FIRE_BRIGADE);
-	 // RescueObject[] at = model.getObjectsOfType(RescueConstants.TYPE_AMBULANCE_TEAM);
-	  //RescueObject[] pf = model.getObjectsOfType(RescueConstants.TYPE_POLICE_FORCE);
-	  
 
-	  Collection<StandardEntity> refuges = model.getEntitiesOfType(StandardEntityURN.REFUGE);
-	  Collection<StandardEntity> fs = model.getEntitiesOfType(StandardEntityURN.FIRE_STATION);
-	  Collection<StandardEntity> ac = model.getEntitiesOfType(StandardEntityURN.AMBULANCE_CENTRE);
-	  Collection<StandardEntity> po = model.getEntitiesOfType(StandardEntityURN.POLICE_OFFICE);
-	  allbuildings.addAll(refuges);
-	  allbuildings.addAll(fs);
-	  allbuildings.addAll(ac);
-	  allbuildings.addAll(po);
-	  
-	 // RescueObject[] allBuildings = Handy.merge(buildings,Handy.merge(refuges,Handy.merge(fs,Handy.merge(ac,po))));
-	 // RescueObject[] allAgents = Handy.merge(civ,Handy.merge(fb,Handy.merge(at,pf)));
-	  double areaMax = 0;
-	  double areaLeft = 0;
-	  //double hpMax = 0;
-	  //double hpLeft = 0;
-	 // double civilians = 0;
-	//  double civiliansAlive = 0;
-	  //double agents = allAgents.length;
-	  //double agentsAlive = 0;
-	//  for (int i=0;i<allBuildings.length;++i) {
-//		  Building next = (Building)allBuildings[i];
-	/*  long area = next.getTotalArea();
-		  areaMax += area;
-		  switch (next.getFieryness()) {
-		  	  case RescueConstants.FIERYNESS_NOT_BURNT:
-		  		  areaLeft += area;
-			  break;
-		  }
-	  
-  		}
-  */
-		  
-	  for (StandardEntity entityi : allbuildings) {
-		  Building next = (Building) entityi;
-		  long area = next.getTotalArea();
-		  if(next.isFierynessDefined()) { // if fieryness undefined, we don't know
-			  areaMax += area;
-			  switch (next.getFieryness()) {
-			  	  case RescueConstants.FIERYNESS_NOT_BURNT:
-			  		  areaLeft += area;
-				  break;
-			  }
-		  }
-	  }/*
-	  for (int i=0;i<allAgents.length;++i) {
-		  Humanoid next = (Humanoid)allAgents[i];
-		  if (next.isAlive()) ++agentsAlive;
-		  if (next.isCivilian()) {
-			  ++civilians;
-			  if (next.isAlive()) ++civiliansAlive;
-		  }
-		  hpMax += RescueConstants.MAX_HP;
-		  hpLeft += next.getHP();
-	  }*/
-	  //double score = (agentsAlive + (hpLeft/hpMax)) * Math.sqrt(areaLeft/areaMax);
-	  double score = Math.sqrt(areaLeft/areaMax);
-	  //	System.out.println("Agents alive: "+agentsAlive+", hpLeft/hpMax="+hpLeft+"/"+hpMax+"="+(hpLeft/hpMax)+", areaLeft/areaMax="+areaLeft+"/"+areaMax+"="+(areaLeft/areaMax)+" -> total score="+score);
-	  return score;
-  }
     
   void Qtable_savetofile() {
 	  //write to file 
